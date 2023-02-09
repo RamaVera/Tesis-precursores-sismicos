@@ -1,3 +1,2 @@
-cmake-build-debug
-Tesis/cmake-build-debug/*
-Tesis/.idea/*
+/Tesis/cmake-build-debug
+/Tesis/.idea
