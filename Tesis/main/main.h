@@ -9,6 +9,11 @@
 #ifndef MAIN_H_
 #define MAIN_H_
 
+#include "varias.h"
+#include "driver/gpio.h"
+#include "soc/soc.h"
+#include "esp_intr_alloc.h"
+#include "esp_timer.h"
 #include "configuraciones.h"
 
 
@@ -37,7 +42,7 @@
 #include "driver/uart.h"
 
 
-#include "sd_card.h"
+#include "sd_card/sd_card.h"
 #include "acelerometroI2C.h"
 #include "GPIO.h"
 #include "file_server.h"
@@ -79,6 +84,12 @@ typedef struct nodo_config_t {
 #define ESTADO_MUESTREANDO_ASYNC            6
 
 
+#define MOUNT_POINT "/sdcard"
+#ifndef SPI_DMA_CHAN
+#define SPI_DMA_CHAN    1
+#endif //SPI_DMA_CHAN
+
+
 typedef struct muestreo_t {
         uint8_t estado_muestreo;
         int64_t epoch_inicio;  // Epoch (UTC) resolucion en segundos
@@ -106,11 +117,18 @@ typedef struct muestreo_t {
 }muestreo_t;
 
 
-#define MOUNT_POINT "/sdcard"
-// DMA channel to be used by the SPI peripheral
-#ifndef SPI_DMA_CHAN
-#define SPI_DMA_CHAN    1
-#endif //SPI_DMA_CHAN
+//////////////////////////////////////////////////////////////////
+// Configuracion de los mensajes de log por el puerto serie
+/* Valores posibles
+  ESP_LOG_NONE → No log output
+  ESP_LOG_ERROR → Critical errors, software module can not recover on its own
+  ESP_LOG_WARN → Error conditions from which recovery measures have been taken
+  ESP_LOG_INFO → Information messages which describe normal flow of events
+  ESP_LOG_DEBUG → Extra information which is not necessary for normal use (values, pointers, sizes, etc).
+  ESP_LOG_VERBOSE → Bigger chunks of debugging information, or frequent messages which can potentially flood the output.
+*/
+void defineLogLevels();
+
 
 
 
