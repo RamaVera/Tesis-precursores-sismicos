@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "Usar hora EPOCH como argumento"
+mosquitto_pub -h 192.168.0.10 -t control/config_hora -u usuario -P usuariopassword -m "0 $1"

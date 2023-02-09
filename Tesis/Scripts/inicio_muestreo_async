@@ -1,0 +1,3 @@
+#!/bin/bash
+
+mosquitto_pub -h 192.168.0.10 -t control/inicio_muestreo_async -u usuario -P usuariopassword -m "3 2"

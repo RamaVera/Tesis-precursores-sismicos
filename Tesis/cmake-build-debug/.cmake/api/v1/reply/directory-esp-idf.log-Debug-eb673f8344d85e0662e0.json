@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "esp-idf/log",
+		"source" : "C:/Espressif/frameworks/esp-idf-v4.3.4/components/log"
+	}
+}

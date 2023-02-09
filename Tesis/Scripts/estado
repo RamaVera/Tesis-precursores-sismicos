@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo Enviando pedido de estado
+
+mosquitto_pub -h 192.168.0.10 -t control/estado -u usuario -P usuariopassword -m "0"

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+printf -v var '%(%s)T' -1
+echo $var
+
+let "var = var+5"
+echo $var
+
+mosquitto_pub -h 192.168.0.10 -t control/inicio_muestreo -u usuario -P usuariopassword -m "$var 3 1"
+
+

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+echo "Epoch inicio"
+echo $1
+
+mosquitto_pub -h 192.168.0.10 -t control/inicio_muestreo -u usuario -P usuariopassword -m "$1 3 1"
