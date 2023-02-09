@@ -5,10 +5,7 @@
  */
 
 #include "../main.h"
-#include "../tictoc/daemon.h"
-#include "../tictoc/microtime.h"
 
-#include "mqtt.h"
 #include "tareas.h"
 
 #define MENSAJES_MQTT

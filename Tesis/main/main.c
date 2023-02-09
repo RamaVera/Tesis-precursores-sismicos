@@ -4,7 +4,6 @@
  *  Created on: May 24, 2020
  *      Author: jaatadia@gmail.com
  */
-#include <daemon.h>
 #include <stdio.h>
 #include <stdint.h>
 #include "sdkconfig.h"
@@ -17,13 +16,13 @@
 #include "main.h"
 
 #include "wifi.h"
-#include "daemon.h"
-#include "microtime.h"
 
 #include "esp_timer.h"
 #include "esp_intr_alloc.h"
 #include "soc/soc.h"
 #include "driver/gpio.h"
+#include "varias.h"
+#include "tareas.h"
 
 
 /************************************************************************
@@ -38,7 +37,6 @@ SemaphoreHandle_t xSemaphore_mutex_archivo = NULL;
 uint8_t LED;
 mensaje_t mensaje_consola;
 muestreo_t Datos_muestreo;
-TicTocData * ticTocData;
 
 nodo_config_t datos_config;
 
@@ -113,7 +111,6 @@ void app_main(void)
         inicializacion_gpios();
         ESP_ERROR_CHECK(inicializacion_i2c());
         ESP_LOGI(TAG, "I2C Inicializado correctamente");
-        inicio_mqtt();
 
         /* Start the file server */
         ESP_ERROR_CHECK(start_file_server("/sdcard"));
@@ -129,9 +126,6 @@ void app_main(void)
         char tictocserver[20] = TICTOC_SERVER;
         strcpy(tictocserver, datos_config.ip_tictoc_server);
 
-        TicTocData * ticTocData1 = malloc(sizeof(TicTocData)); /* ALGORITMO DE SINCRONISMO*/
-        ticTocData = ticTocData1; /* ALGORITMO DE SINCRONISMO*/
-        setupTicToc(ticTocData, tictocserver, TICTOC_PORT); /* ALGORITMO DE SINCRONISMO*/
 
 /* ------------------------------------------
    Una pausa al inicio
@@ -152,18 +146,6 @@ void app_main(void)
         xTaskCreatePinnedToCore(leo_muestras, "leo_muestras", 1024 * 16, (void *)0, 10, &Handle_tarea_i2c,1);
         TaskHandle_t Handle_guarda_datos = NULL;
         xTaskCreatePinnedToCore(guarda_datos, "guarda_datos", 1024 * 16, (void *)0, 9, &Handle_guarda_datos,0);
-
-        // SOLO PARA DEBUGGING
-        TaskHandle_t Handle_muestra_info = NULL;
-        xTaskCreatePinnedToCore(muestra_info, "muestra_info", 1024 * 2, (void *)0, 1, &Handle_muestra_info,0);
-
-// La interrupcion la inicializo al final
-        int timer_muestreo_idx = 0;
-        ESP_LOGI(TAG, "INICIANDO TIMER");
-        inicializacion_timer_muestreo(timer_muestreo_idx, 1,(40000000/MUESTRAS_POR_SEGUNDO));
-
-
-        mensaje_mqtt_estado(); // Al iniciar envía un mensaje de estado, que se puede usar para autocinfiguración de los nodos
 
 }
 

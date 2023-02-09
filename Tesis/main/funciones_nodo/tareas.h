@@ -10,7 +10,6 @@
 
 
 /*Prototipos*/
-void muestra_info(void *arg);
 void leo_muestras(void *arg);
 void guarda_datos(void *arg);
 

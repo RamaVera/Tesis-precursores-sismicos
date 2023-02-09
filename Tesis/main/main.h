@@ -40,7 +40,6 @@
 #include "sd_card.h"
 #include "acelerometroI2C.h"
 #include "GPIO.h"
-#include "timer_muestreo.h"
 #include "file_server.h"
 
 
@@ -49,7 +48,6 @@
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
-#include "mqtt.h"
 #include "tareas.h"
 
 
