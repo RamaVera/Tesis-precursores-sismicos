@@ -1,2 +1,0 @@
-C:\Espressif\tools\xtensa-esp32-elf\esp-2021r2-patch3-8.4.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-ar.exe qc libcmock.a CMakeFiles/__idf_cmock.dir/CMock/src/cmock.c.obj
-C:\Espressif\tools\xtensa-esp32-elf\esp-2021r2-patch3-8.4.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-ranlib.exe libcmock.a
