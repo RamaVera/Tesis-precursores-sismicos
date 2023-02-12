@@ -8,28 +8,24 @@
 #ifndef SD_CARD_H_
 #define SD_CARD_H_
 
-#include "../main.h"
-
 /*****************************************************************************
 * Prototipos
 *****************************************************************************/
 
-void inicializacion_tarjeta_SD(void);
-void extraccion_tarjeta_SD(void);
-void borrar_datos_SD(void);
-void leer_config_SD (void);
-
+esp_err_t SD_init(void);
+esp_err_t SD_writeData(char dataAsString[], bool withNewLine);
 
 /*****************************************************************************
 * Definiciones
 *****************************************************************************/
 #define MOUNT_POINT "/sdcard"
 
+#define PIN_NUM_MISO 19
+#define PIN_NUM_MOSI 23
+#define PIN_NUM_CLK  18
+#define PIN_NUM_CS   5
+
 // DMA channel to be used by the SPI peripheral
-#ifndef SPI_DMA_CHAN
 #define SPI_DMA_CHAN    1
-#endif //SPI_DMA_CHAN
-
-
 
 #endif /* SD_CARD_H_ */
