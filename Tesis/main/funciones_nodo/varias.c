@@ -11,7 +11,7 @@
 #define MENSAJES_MQTT
 
 extern FILE *f_samples;
-extern SemaphoreHandle_t xSemaphore_mutex_archivo;
+extern SemaphoreHandle_t xSemaphore_queue;
 extern muestreo_t Datos_muestreo;
 extern uint8_t LED;
 
@@ -53,14 +53,14 @@ void resetea_muestreo(void){
 void cerrar_archivo(void){
 
 // Cerramos el archivo si está abierto (hay que comprobar que no esté en uso)
-        if( xSemaphore_mutex_archivo != NULL ) { //Chequea que el semáforo esté inicializado
-                if( xSemaphoreTake( xSemaphore_mutex_archivo, portMAX_DELAY ) == pdTRUE ) {
+        if(xSemaphore_queue != NULL ) { //Chequea que el semáforo esté inicializado
+                if(xSemaphoreTake(xSemaphore_queue, portMAX_DELAY ) == pdTRUE ) {
                         if (f_samples != NULL) {
                                 ESP_LOGI(TAG, "CERRANDO ARCHIVO.");
                                 fflush(f_samples); // Vacio el buffer
                                 fclose(f_samples);
                         }
-                        xSemaphoreGive( xSemaphore_mutex_archivo ); // Habilito que otro use el archivo
+                        xSemaphoreGive(xSemaphore_queue ); // Habilito que otro use el archivo
                 }
         } //Chequea que el semáforo de archivo esté inicializado
 }

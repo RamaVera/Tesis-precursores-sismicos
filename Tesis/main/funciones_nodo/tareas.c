@@ -12,8 +12,8 @@
 
 extern FILE *f_samples;
 extern SemaphoreHandle_t xSemaphore_tomamuestra;
-extern SemaphoreHandle_t xSemaphore_guardatabla;
-extern SemaphoreHandle_t xSemaphore_mutex_archivo;
+extern SemaphoreHandle_t xSemaphore_writeSD;
+extern SemaphoreHandle_t xSemaphore_queue;
 
 extern uint8_t LED;
 
@@ -183,7 +183,7 @@ void IRAM_ATTR leo_muestras(void *arg)
                                         if (Datos_muestreo.nro_tabla_enviada >= TABLAS_POR_ARCHIVO) {
                                                 Datos_muestreo.nro_tabla_enviada=0; // Envio una nueva tabla para guardar
                                         }
-                                        xSemaphoreGive( xSemaphore_guardatabla ); // Habilito la escritura de la tabla
+                                        xSemaphoreGive(xSemaphore_writeSD ); // Habilito la escritura de la tabla
                                 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                         } // Toma semaforo
@@ -197,11 +197,11 @@ void IRAM_ATTR guarda_datos(void *arg)
         char archivo[40]; // Para guardar el nombre del archivo
 
         while (1) {
-                if( xSemaphore_guardatabla != NULL ) { //Chequea que el semáforo esté inicializado
-                        if( xSemaphoreTake( xSemaphore_guardatabla, portMAX_DELAY ) == pdTRUE ) //Si se guardó una tabla de datos se libera el semáforo
+                if(xSemaphore_writeSD != NULL ) { //Chequea que el semáforo esté inicializado
+                        if(xSemaphoreTake(xSemaphore_writeSD, portMAX_DELAY ) == pdTRUE ) //Si se guardó una tabla de datos se libera el semáforo
                         {
-                                if( xSemaphore_mutex_archivo != NULL ) { //Chequea que el semáforo esté inicializado
-                                        if( xSemaphoreTake( xSemaphore_mutex_archivo, portMAX_DELAY ) == pdTRUE ) {
+                                if(xSemaphore_queue != NULL ) { //Chequea que el semáforo esté inicializado
+                                        if(xSemaphoreTake(xSemaphore_queue, portMAX_DELAY ) == pdTRUE ) {
 
                                                 Datos_muestreo.nro_tabla_guardada++; // Aumento contador de tablas llenas
 
@@ -267,7 +267,7 @@ void IRAM_ATTR guarda_datos(void *arg)
                                                         }
                                                 }
 
-                                                xSemaphoreGive( xSemaphore_mutex_archivo ); // Habilito que otro use el archivo
+                                                xSemaphoreGive(xSemaphore_queue ); // Habilito que otro use el archivo
                                         }
                                 } //Chequea que el semáforo de archivo esté inicializado
                         }

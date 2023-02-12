@@ -4,7 +4,7 @@ idf_component_register(
                 "funciones_nodo/varias.c"
                 "funciones_nodo/tareas.c"
                 "funciones_nodo/file_server.c"
-                "funciones_nodo/acelerometroI2C.c"
+                "mpu_9250/acelerometroI2C.c"
                 "funciones_nodo/GPIO.c"
                 "sd_card/sd_card.c"
         INCLUDE_DIRS  "funciones_nodo" "sd_card"
