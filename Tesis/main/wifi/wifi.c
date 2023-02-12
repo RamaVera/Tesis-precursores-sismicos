@@ -7,7 +7,7 @@
 *      Author: jaatadia@gmail.com
 */
 
-#include "main.h"
+#include "../main.h"
 
 
 #include <string.h>
