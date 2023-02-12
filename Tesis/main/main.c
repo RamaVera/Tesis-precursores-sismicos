@@ -1,8 +1,8 @@
 /*
  * main.c
  *
- *  Created on: May 24, 2020
- *      Author: jaatadia@gmail.com
+ *  Created on: Jan 01, 2023
+ *      Author: rverag@fi.uba.ar
  */
 #include <stdio.h>
 #include <stdint.h>
@@ -10,38 +10,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
-#include "esp_spi_flash.h"
 #include "esp_timer.h"
-
 #include "main.h"
-
-#include "wifi.h"
-
-#include "esp_timer.h"
-#include "esp_intr_alloc.h"
 #include "soc/soc.h"
-#include "driver/gpio.h"
-#include "varias.h"
-#include "tareas.h"
 
 
 /************************************************************************
 * Variables Globales
 ************************************************************************/
-FILE *f_samples = NULL;
-
-uint8_t LED;
-mensaje_t mensaje_consola;
-muestreo_t Datos_muestreo;
-
-nodo_config_t datos_config;
-
-
 #define QUEUE_LENGTH 10
 #define QUEUE_ITEM_SIZE sizeof(int)
 
 QueueHandle_t dataQueue;
-
 SemaphoreHandle_t xSemaphore_writeSD = NULL;
 SemaphoreHandle_t xSemaphore_queue = NULL;
 
@@ -73,8 +53,8 @@ void app_main(void){
     TaskHandle_t Handle_tarea_i2c = NULL;
     TaskHandle_t Handle_guarda_datos = NULL;
 
-    xTaskCreatePinnedToCore(crearDato, "crearDato", 1024 * 16, NULL, tskIDLE_PRIORITY + 1, &Handle_tarea_i2c,1);
-    xTaskCreatePinnedToCore(guardarDato, "guardarDato", 1024 * 16, NULL, tskIDLE_PRIORITY , &Handle_guarda_datos,0);
+    xTaskCreatePinnedToCore(crearDato, "crearDato", 1024 * 16, NULL, tskIDLE_PRIORITY, &Handle_tarea_i2c,1);
+    xTaskCreatePinnedToCore(guardarDato, "guardarDato", 1024 * 16, NULL, tskIDLE_PRIORITY + 1 , &Handle_guarda_datos,0);
 }
 
 
@@ -93,31 +73,41 @@ void IRAM_ATTR crearDato(void *pvParameters) {
     ESP_LOGI(TAG,"crearDato");
     int item = 1;
     while (1) {
-        //xSemaphoreTake(xSemaphore_queue, portMAX_DELAY);
-        xQueueSend(dataQueue, &item, portMAX_DELAY);
-            ESP_LOGI(TAG,"Sent item %d\n", item);
+        if( xSemaphoreTake(xSemaphore_queue, portMAX_DELAY) == pdTRUE){
+            ESP_LOGI(TAG, "Creo Dato > Tomo semaforo");
+            xQueueSend(dataQueue, &item, portMAX_DELAY);
+            ESP_LOGI(TAG,"Sent item %d", item);
             item++;
-        //xSemaphoreGive(xSemaphore_queue);
+            xSemaphoreGive(xSemaphore_queue);
+            ESP_LOGI(TAG, "Creo Dato > Libero semaforo");
+        }
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-    } //while(1)
+    }
 }
 
 
 void IRAM_ATTR guardarDato(void *pvParameters) {
     ESP_LOGI(TAG,"guardarDato");
 
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+
+
     int item;
     char data[100];
     bool newLine = false;
 
     while (1) {
-        //xSemaphoreTake(xSemaphore_queue, portMAX_DELAY);
-        xQueueReceive(dataQueue, &item, portMAX_DELAY);
-        ESP_LOGI(TAG,"Received item %d\n", item);
-        sprintf(data,"Received item %d", item);
-        SD_writeData(data,newLine);
-        newLine = true;
-        //xSemaphoreGive(xSemaphore_queue);
+        if( xSemaphoreTake(xSemaphore_queue, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Guardo Dato > Tomo semaforo");
+            if ( xQueueReceive(dataQueue, &item, portMAX_DELAY) == pdTRUE){
+                ESP_LOGI(TAG, "Received item %d", item);
+                sprintf(data, "Received item %d", item);
+                SD_writeData(data, newLine);
+                newLine = true;
+            }
+            xSemaphoreGive(xSemaphore_queue);
+            ESP_LOGI(TAG, "Guardo Dato > Libero semaforo");
+        }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
 }

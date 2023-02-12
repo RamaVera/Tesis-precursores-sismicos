@@ -9,7 +9,6 @@
 #ifndef MAIN_H_
 #define MAIN_H_
 
-#include "varias.h"
 #include "driver/gpio.h"
 #include "soc/soc.h"
 #include "esp_intr_alloc.h"
@@ -29,7 +28,6 @@
 #include "freertos/task.h"      // Algoritmo de sincronismo
 #include "esp_system.h"         // Algoritmo de sincronismo
 #include "esp_spi_flash.h"      // Algoritmo de sincronismo
-#include "wifi.h"               // Algoritmo de sincronismo
 
 
 #include "esp_err.h"
@@ -43,9 +41,7 @@
 
 
 #include "sd_card/sd_card.h"
-#include "mpu_9250/acelerometroI2C.h"
-#include "GPIO.h"
-#include "file_server.h"
+
 
 
 #include "esp_vfs_fat.h"
@@ -53,7 +49,6 @@
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
-#include "tareas.h"
 
 
 // Para la publicacion de mensajes por consola
@@ -82,33 +77,6 @@ typedef struct nodo_config_t {
 #define ESTADO_MUESTREANDO                  4
 #define ESTADO_FINALIZANDO_MUESTREO         5
 #define ESTADO_MUESTREANDO_ASYNC            6
-
-
-typedef struct muestreo_t {
-        uint8_t estado_muestreo;
-        int64_t epoch_inicio;  // Epoch (UTC) resolucion en segundos
-        uint32_t int_contador_segundos;  // Contador de la duracion del muestreo
-        uint32_t nro_muestreo;       // Identificador del muestreo en curso
-        uint8_t datos_mpu [CANT_BYTES_LECTURA]; // Lugar donde guardo los datos leidos del mpu
-        uint8_t TABLA0[LONG_TABLAS];
-        uint8_t TABLA1[LONG_TABLAS];
-        uint8_t selec_tabla_escritura;
-        uint8_t selec_tabla_lectura;
-        uint8_t nro_tabla_guardada;
-        uint8_t nro_tabla_enviada;
-        uint32_t nro_muestra_en_seg;
-        uint32_t nro_muestra_total_muestreo;
-        uint32_t nro_archivo;
-        uint32_t duracion_muestreo;
-        bool flag_tomar_muestra;
-        bool flag_muestra_perdida;
-        bool flag_tabla_llena;
-        bool flag_tabla_perdida;
-        bool flag_fin_muestreo;
-        uint32_t cant_muestras_perdidas;  // Contador de muestras perdidas en una tabla.
-        uint32_t cantidad_de_interrupciones_de_muestreo;
-        uint32_t cantidad_de_muestras_leidas;
-}muestreo_t;
 
 
 //////////////////////////////////////////////////////////////////
