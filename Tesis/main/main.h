@@ -43,7 +43,7 @@
 
 
 #include "sd_card/sd_card.h"
-#include "acelerometroI2C.h"
+#include "mpu_9250/acelerometroI2C.h"
 #include "GPIO.h"
 #include "file_server.h"
 
@@ -84,12 +84,6 @@ typedef struct nodo_config_t {
 #define ESTADO_MUESTREANDO_ASYNC            6
 
 
-#define MOUNT_POINT "/sdcard"
-#ifndef SPI_DMA_CHAN
-#define SPI_DMA_CHAN    1
-#endif //SPI_DMA_CHAN
-
-
 typedef struct muestreo_t {
         uint8_t estado_muestreo;
         int64_t epoch_inicio;  // Epoch (UTC) resolucion en segundos
@@ -128,8 +122,8 @@ typedef struct muestreo_t {
   ESP_LOG_VERBOSE → Bigger chunks of debugging information, or frequent messages which can potentially flood the output.
 */
 void defineLogLevels();
-
-
+esp_err_t validateSemaphoresCreateCorrectly();
+esp_err_t validateQueueCreateCorrectly();
 
 
 
