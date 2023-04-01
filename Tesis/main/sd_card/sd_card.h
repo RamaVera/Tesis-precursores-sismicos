@@ -20,12 +20,12 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine);
 *****************************************************************************/
 #define MOUNT_POINT "/sdcard"
 
-#define PIN_NUM_MISO 19
-#define PIN_NUM_MOSI 23
-#define PIN_NUM_CLK  18
-#define PIN_NUM_CS   5
+#define SD_PIN_NUM_MISO 19
+#define SD_PIN_NUM_MOSI 23
+#define SD_PIN_NUM_CLK  18
+#define SD_PIN_NUM_CS   5
 
 // DMA channel to be used by the SPI peripheral
-#define SPI_DMA_CHAN    1
+#define SD_SPI_DMA_CHAN    1
 
 #endif /* SD_CARD_H_ */
