@@ -1,13 +1,4 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-#include <stdlib.h>
-#include <string.h>
-#include <esp_log.h>
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "driver/spi_master.h"
-#include "soc/gpio_struct.h"
-
 #include "mpu9250.h"
 
 static const char *TAG = "MPU9250"; // Para los mensajes de LOG
@@ -48,17 +39,18 @@ esp_err_t MPU9250_init(void) {
         return ESP_FAIL;
     }
 
-    ret = MPU9250_reset();
-    if(ret != ESP_OK){
-        ESP_LOGE(TAG, "MPU9250: Invalid reset");
-        return ESP_FAIL;
-    }
 
     uint8_t rv;
     rv = mpu9250_read(WHO_IM_I);
     ESP_LOGI(TAG, "MPU9250: retrieved id: %02x\n", rv);
     if ( rv != MPU9250_ID  && rv != MPU92XX_ID) {
         ESP_LOGE(TAG, "MPU9250: Wrong id: %02x\n", rv);
+        return ESP_FAIL;
+    }
+
+    ret = MPU9250_reset();
+    if(ret != ESP_OK){
+        ESP_LOGE(TAG, "MPU9250: Invalid reset");
         return ESP_FAIL;
     }
 
@@ -71,47 +63,61 @@ esp_err_t MPU9250_init(void) {
     return ESP_OK;
 }
 
+esp_err_t MPU9250_enableInterruptWith(gpio_isr_t functionToDoWhenRiseAnInterrupt) {
+
+    // Set interrupt pin active high, push-pull, hold interrupt pin level HIGH until interrupt cleared, clear on read of INT_STATUS
+    if( mpu9250_write(INT_PIN_CFG, 0x20)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+
+    gpio_pad_select_gpio(MPU_PIN_NUM_INT);
+    gpio_set_direction(MPU_PIN_NUM_INT, GPIO_MODE_INPUT);
+    gpio_pulldown_en(MPU_PIN_NUM_INT);
+    gpio_pullup_dis(MPU_PIN_NUM_INT);
+    gpio_set_intr_type(MPU_PIN_NUM_INT, GPIO_INTR_POSEDGE);
+
+    gpio_install_isr_service(0);
+    if( gpio_isr_handler_add(MPU_PIN_NUM_INT, functionToDoWhenRiseAnInterrupt, NULL ) != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+
+    if(MPU9250_enableInterrupt(false) != ESP_OK){ return ESP_FAIL;} vTaskDelay(1 / portTICK_PERIOD_MS);
+
+    return ESP_OK;
+
+}
+
+esp_err_t MPU9250_enableInterrupt(bool enable) {
+    // INT enable on RDY
+    return mpu9250_write(INT_ENABLE, enable?0x01:0x00);
+}
 
 esp_err_t MPU9250_reset()
 {
     // Write a one to bit 7 reset bit; toggle reset device
-    esp_err_t ret;
-    ret = mpu9250_write(PWR_MGMT_1,0x80);
-    vTaskDelay(100/portTICK_PERIOD_MS);
-    mpu9250_write(PWR_MGMT_1,0x01);
-    vTaskDelay(1/portTICK_PERIOD_MS);
-    return ret;
+    if( mpu9250_write(PWR_MGMT_1, 0x80) != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Auto select clock source to be PLL gyroscope
+    if( mpu9250_write(PWR_MGMT_1, 0x01) != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    return ESP_OK;
 }
-
-
 
 esp_err_t mpu9250_start(void)
 {
-    if( mpu9250_write(PWR_MGMT_2, 0)            != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // bit0 1: Set LPF to 184Hz 0: No LPF, bit6 Stop if fifo full
-    if( mpu9250_write(MPU_CONFIG, (1<<6) | 1)   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // Sample rate 1000Hz
-    if( mpu9250_write(SMPLRT_DIV, 0)            != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // Gyro 2000dps
-    if( mpu9250_write(GYRO_CONFIG, 3<<3)        != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // Accel full scale 16g
-    if( mpu9250_write(ACCEL_CONFIG, 3<<3)       != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // Set LPF to 218Hz BW
-    if( mpu9250_write(ACCEL_CONFIG2, 1)         != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // INT enable on RDY
-    if( mpu9250_write(INT_ENABLE, 1)            != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    uint8_t val;
-    val = mpu9250_read(INT_PIN_CFG);
-    val |= 0x30;
-    if( mpu9250_write(INT_PIN_CFG, val)            != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Enable Gyroscope and Accelerometer
+    //if( mpu9250_write(PWR_MGMT_2, 0x00)          != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Disable Gyroscope
+    if( mpu9250_write(PWR_MGMT_2, 0x07)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // FCHOICE [1 1] DLPF_CFG [0] Gyroscope--> 250Hz Delay:0.97  FS:8 Khz
+    if( mpu9250_write(MPU_CONFIG, 0x06)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // FCHOICEB [0 0] Gyro 2000dps
+    if( mpu9250_write(GYRO_CONFIG, 0x18)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Accel scale 2g
+    if( mpu9250_write(ACCEL_CONFIG, 0x08)   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // FCHOICE [1] A_DLPF_CFG 0x02 3dB BW:9Hz Fs:1 KHz DLPF Delay:2.88
+    if( mpu9250_write(ACCEL_CONFIG2, 0x02)  != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Set sample rate = gyroscope output rate 8000Khz/(1 + SMPLRT_DIV) ---> 1000Khz / (1+0) = 1000Khz
+    if( mpu9250_write(SMPLRT_DIV, 0x00)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    // Power down magnetometer
+    if( mpu9250_write(AK8963_CNTL1, 0x00)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
 
     return  ESP_OK;
-    // Looks that enabling DMP without blob causes continuous fifo sync errors
-    //#if 0
-    //    val = mpu9250_read(USER_CTRL);
-    //    mpu9250_write(USER_CTRL, val | (1<<7));
-    //    vTaskDelay(1/portTICK_PERIOD_MS);
-    //#
+
 }
 
 uint8_t mpu9250_read(uint8_t reg){
@@ -175,6 +181,7 @@ bool mpu9250_ready(void)
     uint8_t val = mpu9250_read(INT_STATUS);
     return (val & 1);
 }
+
 
 int mpu9250_fifo_count(void)
 {

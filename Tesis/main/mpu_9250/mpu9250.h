@@ -2,6 +2,15 @@
 #ifndef MPU9250_H
 #define MPU9250_H
 
+#include <stdlib.h>
+#include <string.h>
+#include <esp_log.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/spi_master.h"
+#include "soc/gpio_struct.h"
+#include "driver/gpio.h"
+
 //  n       Number Pin Name         Pin Description
 
 //  9       AD0 / SDO               I2C Slave Address LSB (AD0); SPI serial data output (SDO)
@@ -16,8 +25,8 @@
 #define MPU_PIN_NUM_MISO_ADO 12
 #define MPU_PIN_NUM_MOSI_SDA 13
 #define MPU_PIN_NUM_CLK_SCL  14
-#define MPU_PIN_NUM_CS   27
-
+#define MPU_PIN_NUM_CS   15
+#define MPU_PIN_NUM_INT 26
 #define MPU_SPI_DMA_CHAN    0
 
 // Experimental
@@ -143,6 +152,8 @@ struct ak_asa {
 
 esp_err_t MPU9250_init(void);
 esp_err_t MPU9250_reset();
+esp_err_t MPU9250_enableInterrupt(bool enable);
+esp_err_t MPU9250_enableInterruptWith(gpio_isr_t functionToDoWhenRiseAnInterrupt);
 uint8_t mpu9250_read(uint8_t reg);
 esp_err_t mpu9250_write(uint8_t reg, uint8_t val);
 esp_err_t mpu9250_readn(uint8_t reg, uint8_t *buf, size_t len);
