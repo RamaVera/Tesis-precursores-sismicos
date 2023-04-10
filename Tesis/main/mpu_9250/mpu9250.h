@@ -137,6 +137,11 @@ static const float ADC_16BIT_RESOLUTION = 0.15f;
 // AK8963 data are little endian
 #define le16_val(v, idx) ((int16_t)(((uint16_t)v[2*idx+1] << 8) | v[2*idx]))
 
+typedef struct MPU9250_t {
+    float Ax, Ay, Az;         /*!< Accelerometer raw data */
+} MPU9250_t;
+
+
 struct sample {
     uint8_t d[14];
 };
@@ -154,6 +159,7 @@ esp_err_t MPU9250_init(void);
 esp_err_t MPU9250_reset();
 esp_err_t MPU9250_enableInterrupt(bool enable);
 esp_err_t MPU9250_enableInterruptWith(gpio_isr_t functionToDoWhenRiseAnInterrupt);
+esp_err_t MPU9250_ReadAcce(MPU9250_t * sampleOfMPU);
 uint8_t mpu9250_read(uint8_t reg);
 esp_err_t mpu9250_write(uint8_t reg, uint8_t val);
 esp_err_t mpu9250_readn(uint8_t reg, uint8_t *buf, size_t len);
