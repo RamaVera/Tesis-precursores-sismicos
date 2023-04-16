@@ -10,24 +10,7 @@
 #include "driver/spi_master.h"
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
-
-//  n       Number Pin Name         Pin Description
-
-//  9       AD0 / SDO               I2C Slave Address LSB (AD0); SPI serial data output (SDO)
-//  11      FSYNC                   Frame synchronization digital input. Connect to GND if unused.
-//  12      INT                     Interrupt digital output (totem pole or open-drain)
-//  13      VDD                     Power supply voltage and Digital I/O supply voltage
-//  18      GND                     Power supply ground
-//  22      nCS                     Chip select (SPI mode only)
-//  23      SCL / SCLK              I2C serial clock (SCL); SPI serial clock (SCLK)
-//  24      SDA / SDI               I2C serial data (SDA); SPI serial data input (SDI)
-
-#define MPU_PIN_NUM_MISO_ADO 12
-#define MPU_PIN_NUM_MOSI_SDA 13
-#define MPU_PIN_NUM_CLK_SCL  14
-#define MPU_PIN_NUM_CS   15
-#define MPU_PIN_NUM_INT 26
-#define MPU_SPI_DMA_CHAN    0
+#include "../pinout.h"
 
 // Experimental
 #define FIXUP_INS_OFFSET
@@ -158,17 +141,21 @@ struct ak_asa {
 esp_err_t MPU9250_init(void);
 esp_err_t MPU9250_reset();
 esp_err_t MPU9250_enableInterrupt(bool enable);
-esp_err_t MPU9250_enableInterruptWith(gpio_isr_t functionToDoWhenRiseAnInterrupt);
+esp_err_t MPU9250_attachInterruptWith(gpio_isr_t functionToDoWhenRiseAnInterrupt, bool enableInterrupt);
 esp_err_t MPU9250_ReadAcce(MPU9250_t * sampleOfMPU);
+esp_err_t MPU9250_SetCalibrationForAccel(MPU9250_t * meanAccel);
+
 uint8_t mpu9250_read(uint8_t reg);
+
 esp_err_t mpu9250_write(uint8_t reg, uint8_t val);
 esp_err_t mpu9250_readn(uint8_t reg, uint8_t *buf, size_t len);
+esp_err_t mpu9250_start(void);
 bool mpu9250_ready(void);
+
 int mpu9250_fifo_count(void);
 bool mpu9250_read_fifo(struct sample *rx);
 bool check_fifo(int t);
 void mpu9250_fifo_reset(void);
-esp_err_t mpu9250_start(void);
 
 
 void slv0_readn(uint8_t reg, uint8_t size);

@@ -8,6 +8,12 @@
 #ifndef SD_CARD_H_
 #define SD_CARD_H_
 
+#include <string.h>
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "driver/sdmmc_host.h"
+#include "../pinout.h"
+
 /*****************************************************************************
 * Prototipos
 *****************************************************************************/
@@ -19,11 +25,6 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine);
 * Definiciones
 *****************************************************************************/
 #define MOUNT_POINT "/sdcard"
-
-#define SD_PIN_NUM_MISO 19
-#define SD_PIN_NUM_MOSI 23
-#define SD_PIN_NUM_CLK  18
-#define SD_PIN_NUM_CS   5
 
 // DMA channel to be used by the SPI peripheral
 #define SD_SPI_DMA_CHAN    1

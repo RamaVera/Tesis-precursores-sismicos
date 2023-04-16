@@ -3,6 +3,6 @@ idf_component_register(
                 "wifi/wifi.c"
                 "file_server/file_server.c"
                 "mpu_9250/mpu9250.c"
-                "GPIO/GPIO.c"
+                "button/button.c"
                 "sd_card/sd_card.c"
                 )

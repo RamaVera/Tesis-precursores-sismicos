@@ -5,12 +5,6 @@
  *	Contiene las funciones de manejo e inicializacion de la tarjeta SD
  */
 
-#include <string.h>
-#include <dirent.h>
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdmmc_host.h"
-
 #include "sd_card.h"
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
