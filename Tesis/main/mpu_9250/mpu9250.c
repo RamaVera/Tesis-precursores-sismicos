@@ -3,6 +3,8 @@
 
 static const char *TAG = "MPU9250"; // Para los mensajes de LOG
 
+static MPU9250_t Offset = {0,0,0};
+
 spi_device_handle_t spi_mpu;
 
 esp_err_t MPU9250_init(void) {
@@ -135,33 +137,88 @@ esp_err_t MPU9250_ReadAcce(MPU9250_t * sampleOfMPU) {
 
     float AMult = 2.0f / 32768.0f;
 
-    sampleOfMPU->Ax = (float)axRaw * AMult;
-    sampleOfMPU->Ay = (float)ayRaw * AMult;
-    sampleOfMPU->Az = (float)azRaw * AMult;
+    sampleOfMPU->Ax = (float)axRaw * AMult - Offset.Ax;
+    sampleOfMPU->Ay = (float)ayRaw * AMult - Offset.Ay;
+    sampleOfMPU->Az = (float)azRaw * AMult - Offset.Az;
     return ESP_OK;
 }
 
 
 esp_err_t MPU9250_SetCalibrationForAccel(MPU9250_t * meanAccel){
-    const uint8_t lowMask = 0x0F;
-    const uint8_t highMask = 0xF0;
-    const float AMult = 2.0f / 32768.0f;
 
-    //meanAccel->Ax /= AMult;
-    //meanAccel->Ay /= AMult;
-    //meanAccel->Az /= AMult;
+    Offset.Ax = meanAccel->Ax;
+    Offset.Ay = meanAccel->Ay;
+    Offset.Az = meanAccel->Az + ((meanAccel->Az > 0L)? -1.0:1.0);
 
-    uint16_t axAsInt = meanAccel->Ax;
-    uint16_t ayAsInt = meanAccel->Ay;
-    uint16_t azAsInt = meanAccel->Az - 1;
+    /*
+    float AMult = 2.0f / 32768.0f;
+
+    // Remove gravity from the z-axis accelerometer bias calculation
+
+    int32_t accel_bias[3] = {
+            (int32_t) (meanAccel->Ax)/AMult ,
+            (int32_t) (meanAccel->Ay)/AMult ,
+            (int32_t) ((meanAccel->Az + ((meanAccel->Az > 0L)? -1.0:1.0))/AMult)};
+
+    ESP_LOGI(TAG,"Calculated offset to apply %x, %x, %x",accel_bias[0],accel_bias[1],accel_bias[2]);
+
+    int16_t accel_bias_reg[3] = { 0, 0, 0 }; // A place to hold the factory accelerometer trim biases
+    int16_t new_accel_bias_reg[3] = { 0, 0, 0 };
+    int16_t mask_bit[3] = { 1, 1, 1 };// Define array to hold mask bit for each accelerometer bias axis
+    uint8_t data[6]; // data array to hold accelerometer and gyro x, y, z, data
+
+    // Read factory accelerometer trim values
+    if( mpu9250_readn(XA_OFFSET_H,&data[0],2)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_readn(YA_OFFSET_H,&data[2],2)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_readn(ZA_OFFSET_H,&data[4],2)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+
+    ESP_LOGI(TAG,"Previous Offset is %02x%02x, %02x%02x, %02x%02x",data[0],data[1],data[2],data[3],data[4],data[5]);
+
+    accel_bias_reg[0] = ((int16_t) data[0] << 8) | data[1];
+    accel_bias_reg[1] = ((int16_t) data[2] << 8) | data[3];
+    accel_bias_reg[2] = ((int16_t) data[4] << 8) | data[5];
+    ESP_LOGI(TAG,"Previous Offset as accel_bias_reg %x, %x, %x",accel_bias_reg[0],accel_bias_reg[1],accel_bias_reg[2]);
+    ESP_LOGI(TAG,"Previous Offset as float is %02f, %02f, %02f",(float)accel_bias_reg[0] * AMult,(float)accel_bias_reg[1]  * AMult,(float)accel_bias_reg[2] * AMult);
+
+
+    for (int i = 0; i < 3; i++) {
+        if (accel_bias_reg[i] % 2) {
+            mask_bit[i] = 0;
+        }
+        accel_bias_reg[i] -= accel_bias[i]; // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
+        if (mask_bit[i]) {
+            accel_bias_reg[i] = accel_bias_reg[i] & ~mask_bit[i]; // Preserve temperature compensation bit
+        } else {
+            accel_bias_reg[i] = accel_bias_reg[i] | 0x0001; // Preserve temperature compensation bit
+        }
+    }
+
+    ESP_LOGI(TAG,"Calculated Offset %02x, %02x, %02x",accel_bias_reg[0],accel_bias_reg[1],accel_bias_reg[2]);
 
     // Push gyro biases to hardware registers
-    if( mpu9250_write(XA_OFFSET_H, (uint8_t )(axAsInt &  highMask))    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    if( mpu9250_write(XA_OFFSET_L, (uint8_t )(axAsInt &  lowMask))     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    if( mpu9250_write(YA_OFFSET_H, (uint8_t )(ayAsInt &  highMask))    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    if( mpu9250_write(YA_OFFSET_L, (uint8_t )(ayAsInt &  lowMask))     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    if( mpu9250_write(ZA_OFFSET_H, (uint8_t )(azAsInt &  highMask))    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    if( mpu9250_write(ZA_OFFSET_L, (uint8_t )(azAsInt &  lowMask))     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    uint8_t offset[6] = {   (uint8_t) (accel_bias_reg[0] >> 8 & 0xFF)   ,
+                            (uint8_t )(accel_bias_reg[0] &  0xFF)       ,
+                            (uint8_t )(accel_bias_reg[1] >> 8 &  0xFF)  ,
+                            (uint8_t )(accel_bias_reg[1] &  0xFF)       ,
+                            (uint8_t )(accel_bias_reg[2] >> 8 &  0xFF)  ,
+                            (uint8_t )(accel_bias_reg[2] &  0xFF)       };
+
+    ESP_LOGI(TAG,"New Offset is %02x%02x, %02x%02x, %02x%02x",offset[0],offset[1],offset[2],offset[3],offset[4],offset[5]);
+
+    new_accel_bias_reg[0] = ((int16_t) offset[0] << 8) | offset[1];
+    new_accel_bias_reg[1] = ((int16_t) offset[2] << 8) | offset[3];
+    new_accel_bias_reg[2] = ((int16_t) offset[4] << 8) | offset[5];
+
+    ESP_LOGI(TAG,"New Offset as float is %02f, %02f, %02f",(float)new_accel_bias_reg[0] * AMult,(float)new_accel_bias_reg[1]  * AMult,(float)new_accel_bias_reg[2] * AMult);
+
+    if( mpu9250_write(XA_OFFSET_H,  data[0])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/ portTICK_PERIOD_MS);
+    if( mpu9250_write(XA_OFFSET_L,  data[1])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_write(YA_OFFSET_H,  data[2])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_write(YA_OFFSET_L,  data[3])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_write(ZA_OFFSET_H,  data[4])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+    if( mpu9250_write(ZA_OFFSET_L,  data[5])   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
+
+    */
     return ESP_OK;
 }
 

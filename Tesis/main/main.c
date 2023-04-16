@@ -155,13 +155,13 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 accumulator.Ay /= QUEUE_LENGTH;
                 accumulator.Az /= QUEUE_LENGTH;
                 ESP_LOGI(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
-                vTaskDelay(20/portTICK_PERIOD_MS);
 
                 if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
                     ESP_LOGI(TAG,"Calibration Fail");
                 }else{
                     ESP_LOGI(TAG,"Calibration Done");
                 }
+                vTaskDelay(1000/portTICK_PERIOD_MS);
                 calibrationDone = true;
                 xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
             }
