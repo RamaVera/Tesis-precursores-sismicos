@@ -26,9 +26,7 @@ bool calibrationDone = false;
 
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
-
 void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
-void IRAM_ATTR mpu9250_enableCalibrationTaskByInterrupt(void* pvParameters);
 
 void IRAM_ATTR esp32_initTask(void *pvParameters);
 void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters);
@@ -41,22 +39,15 @@ void IRAM_ATTR sd_savingTask(void *pvParameters);
 void app_main(void) {
 
     defineLogLevels();
-    if( SD_init() != ESP_OK) return;
-    if( MPU9250_init() != ESP_OK) return;
-    if( Button_init() != ESP_OK) return;
+    if( Button_init()           != ESP_OK) return;
+    if( SD_init()               != ESP_OK) return;
+    if( MPU9250_init()          != ESP_OK) return;
     if( MPU9250_attachInterruptWith (mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
-    //if( Button_attachInterruptWith  (NULL) != ESP_OK) return;
+    if( ESP32_initSemaphores()  != ESP_OK) return;
+    if( ESP32_initQueue()       != ESP_OK) return;
 
-    xSemaphore_newDataOnMPU = xSemaphoreCreateBinary();
-    xSemaphore_writeOnSD = xSemaphoreCreateBinary();
-    xSemaphore_dataIsSavedOnQueue = xSemaphoreCreateMutex();
-    validateSemaphoresCreateCorrectly();
 
-    dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);
-    validateQueueCreateCorrectly();
-
-    ESP_LOGI(TAG, "INICIANDO TAREAS");
-
+    ESP_LOGI(TAG, "Initiating tasks");
     xTaskCreatePinnedToCore(esp32_initTask, "esp32_initTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 10,&INIT_ISR, 1);
 
     xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 1, &MPU_ISR, 0);
@@ -85,12 +76,32 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-#ifdef SD_DEBUG_MODE
+#ifdef DEBUG_MODE
     ets_printf(">>>>>");
 #endif
 }
 
-void IRAM_ATTR mpu9250_enableCalibrationTaskByInterrupt(void* pvParameters){
+void IRAM_ATTR esp32_initTask(void *pvParameters) {
+    ESP_LOGI(TAG, "Tasks ready to init");
+
+    bool firstTime = true;
+
+    while (1) {
+        if( Button_isPressed() && firstTime ) {
+            ESP_LOGI(TAG,"--------------Init Calibration-----------------");
+            vTaskDelay(10/portTICK_PERIOD_MS);
+            firstTime = false;
+            vTaskResume(MPU_ISR);
+            vTaskResume(MPU_CALIB_ISR);
+        }
+        if( !Button_isPressed() && calibrationDone ) {
+            ESP_LOGI(TAG,"---------------Init Sampling--------------");
+            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskResume(SD_ISR);
+            vTaskDelete(MPU_CALIB_ISR);
+            vTaskDelete(INIT_ISR);
+        }
+    }
 
 }
 
@@ -103,13 +114,13 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
         // Solo se libera si la interrupcion de nuevo dato disponible lo libera.
         // Para que la interrupcion se de, tiene que llamarse a mpu9250_ready
         xSemaphoreTake(xSemaphore_newDataOnMPU, portMAX_DELAY);
-        #ifdef SD_DEBUG_MODE
+        #ifdef DEBUG_MODE
             ESP_LOGI(TAG, "MPU Task Global > take semaphore");
         #endif
 
         // xSemaphore_queue toma el semaforo para que se acceda a la cola
         if(xSemaphoreTake(xSemaphore_dataIsSavedOnQueue, portMAX_DELAY) == pdTRUE){
-            #ifdef SD_DEBUG_MODE
+            #ifdef DEBUG_MODE
             ESP_LOGI(TAG, "MPU Task Queue > take semaphore");
             #endif
 
@@ -120,11 +131,11 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
             }
             ESP_LOGI(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
             xQueueSend(dataQueue, &data, portMAX_DELAY);
-            #ifdef SD_DEBUG_MODE
+            #ifdef DEBUG_MODE
             ESP_LOGI(TAG,"MPU Task Sent item");
             #endif
             xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
-            #ifdef SD_DEBUG_MODE
+            #ifdef DEBUG_MODE
             ESP_LOGI(TAG,"MPU Task Queue > free semaphore");
             #endif
 
@@ -169,32 +180,6 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
     }
 }
 
-
-void IRAM_ATTR esp32_initTask(void *pvParameters) {
-    ESP_LOGI(TAG, "Tasks ready to init");
-
-    bool firstTime = true;
-
-    while (1) {
-        if( Button_isPressed() && firstTime ) {
-            ESP_LOGI(TAG,"--------------Init Calibration-----------------");
-            vTaskDelay(10/portTICK_PERIOD_MS);
-            firstTime = false;
-            vTaskResume(MPU_ISR);
-            vTaskResume(MPU_CALIB_ISR);
-        }
-        if( !Button_isPressed() && calibrationDone ) {
-            ESP_LOGI(TAG,"---------------Finish Calibration--------------");
-            vTaskDelay(10/portTICK_PERIOD_MS);
-            vTaskResume(SD_ISR);
-            vTaskDelete(MPU_CALIB_ISR);
-            vTaskDelete(INIT_ISR);
-        }
-    }
-
-}
-
-
 void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
     ESP_LOGI(TAG,"SD task init");
@@ -210,20 +195,20 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
         // xSemaphore_dataIsSavedOnQueue actua como semaforo mutex para que no
         // se acceda al la cola desde los dos task
         if(xSemaphoreTake(xSemaphore_dataIsSavedOnQueue, portMAX_DELAY) == pdTRUE) {
-            #ifdef SD_DEBUG_MODE
+            #ifdef DEBUG_MODE
             ESP_LOGI(TAG, "SD Task Guardo Dato > Tomo semaforo");
             #endif
 
             // Si no hay elementos en la cola no tiene sentido esperar a que aparezcan
             if ( xQueueReceive(dataQueue, &item, 0) == pdTRUE){
-                #ifdef SD_DEBUG_MODE
+                #ifdef DEBUG_MODE
                 ESP_LOGI(TAG, "SD Task Received item");
                 #endif
                 sprintf(data, "%02f\t%02f\t%02f\t", item.Ax,item.Ay,item.Az);
                 SD_writeData(data, newLine);
             }
             xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
-            #ifdef SD_DEBUG_MODE
+            #ifdef DEBUG_MODE
             ESP_LOGI(TAG, "SD Task Guardo Dato > Libero semaforo");
             #endif
         }
@@ -231,20 +216,25 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 }
 
 
-esp_err_t validateQueueCreateCorrectly() {
+esp_err_t ESP32_initQueue() {
+    dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);
     if( dataQueue  != NULL){
-        ESP_LOGI(TAG, "COLA CREADA CORECTAMENTE");
         return ESP_OK;
     }
+    ESP_LOGI(TAG, "Error Creating queue");
     return ESP_FAIL;
 }
 
-esp_err_t validateSemaphoresCreateCorrectly() {
+esp_err_t ESP32_initSemaphores() {
+    xSemaphore_newDataOnMPU = xSemaphoreCreateBinary();
+    xSemaphore_writeOnSD = xSemaphoreCreateBinary();
+    xSemaphore_dataIsSavedOnQueue = xSemaphoreCreateMutex();
+    
     if( xSemaphore_writeOnSD            != NULL &&
         xSemaphore_dataIsSavedOnQueue   != NULL &&
         xSemaphore_newDataOnMPU         != NULL){
-        ESP_LOGI(TAG, "SEMAFOROS CREADOS CORECTAMENTE");
         return ESP_OK;
     }
+    ESP_LOGI(TAG, "Error Creating semaphores");
     return ESP_FAIL;
 }

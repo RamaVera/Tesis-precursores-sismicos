@@ -59,8 +59,8 @@ typedef struct nodo_config_t {
   ESP_LOG_VERBOSE → Bigger chunks of debugging information, or frequent messages which can potentially flood the output.
 */
 void defineLogLevels();
-esp_err_t validateSemaphoresCreateCorrectly();
-esp_err_t validateQueueCreateCorrectly();
+esp_err_t ESP32_initSemaphores();
+esp_err_t ESP32_initQueue();
 
 
 
