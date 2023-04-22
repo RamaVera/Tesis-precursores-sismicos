@@ -10,4 +10,7 @@
 
 void connectToWiFi();
 
+#define WIFI_SSID "xxxxxxx"        //SSID WIFI (Nombre de red)
+#define WIFI_PASS "xxxxxxx"        //Contraseña WIFI
+
 #endif /* MAIN_WIFI_H_ */

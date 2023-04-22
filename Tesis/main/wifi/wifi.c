@@ -9,6 +9,7 @@
 
 #include "../main.h"
 
+#include "wifi.h"
 
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -20,12 +21,6 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-
-
-
-
- #include "lwip/err.h"
- #include "lwip/sys.h"
 
 /* The examples use WiFi configuration that you can set via project configuration menu
 
@@ -125,8 +120,8 @@ void connectToWiFi()
 
         wifi_config_t wifi_config = {
                 .sta = {
-                        //.ssid = WIFI_SSID,
-                        //.password = WIFI_PASS,
+                        .ssid = WIFI_SSID,
+                        .password = WIFI_PASS,
                         .pmf_cfg = {
                                 .capable = true,
                                 .required = false
@@ -157,11 +152,11 @@ void connectToWiFi()
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
          * happened. */
         if (bits & WIFI_CONNECTED_BIT) {
-               // ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", WIFI_SSID, WIFI_PASS);
+            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", WIFI_SSID, WIFI_PASS);
         } else if (bits & WIFI_FAIL_BIT) {
-               // ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", WIFI_SSID, WIFI_PASS);
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", WIFI_SSID, WIFI_PASS);
         } else {
-               // ESP_LOGE(TAG, "UNEXPECTED EVENT");
+            ESP_LOGE(TAG, "UNEXPECTED EVENT");
         }
 
         /* The event will not be processed after unregister */
