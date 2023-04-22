@@ -6,6 +6,7 @@
  */
 #include "main.h"
 
+#define DEBUG_MODE
 /************************************************************************
 * Variables Globales
 ************************************************************************/
@@ -16,6 +17,7 @@ TaskHandle_t INIT_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
 TaskHandle_t MPU_CALIB_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
+TaskHandle_t WIFI_ISR = NULL;
 
 QueueHandle_t dataQueue;
 SemaphoreHandle_t xSemaphore_writeOnSD = NULL;
@@ -23,6 +25,7 @@ SemaphoreHandle_t xSemaphore_newDataOnMPU = NULL;
 SemaphoreHandle_t xSemaphore_dataIsSavedOnQueue = NULL;
 
 bool calibrationDone = false;
+bool wifiConnect = false;
 
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
@@ -32,6 +35,7 @@ void IRAM_ATTR esp32_initTask(void *pvParameters);
 void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters);
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
 void IRAM_ATTR sd_savingTask(void *pvParameters);
+void IRAM_ATTR wifi_connectTask(void *pvParameters);
 /**
  * @brief Función main
  */
@@ -42,9 +46,11 @@ void app_main(void) {
     if( Button_init()           != ESP_OK) return;
     if( SD_init()               != ESP_OK) return;
     if( MPU9250_init()          != ESP_OK) return;
+    if( WIFI_init()             != ESP_OK) return;
     if( MPU9250_attachInterruptWith (mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
     if( ESP32_initSemaphores()  != ESP_OK) return;
     if( ESP32_initQueue()       != ESP_OK) return;
+
 
 
     ESP_LOGI(TAG, "Initiating tasks");
@@ -58,6 +64,9 @@ void app_main(void) {
 
     xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR, 1);
     vTaskSuspend(SD_ISR);
+
+    xTaskCreatePinnedToCore(wifi_connectTask, "wifi_connect", 1024 * 16, NULL, tskIDLE_PRIORITY + 10, &WIFI_ISR, 0);
+    vTaskSuspend(WIFI_ISR);
 
 }
 
@@ -93,13 +102,15 @@ void IRAM_ATTR esp32_initTask(void *pvParameters) {
             firstTime = false;
             vTaskResume(MPU_ISR);
             vTaskResume(MPU_CALIB_ISR);
+            vTaskResume(WIFI_ISR);
         }
-        if( !Button_isPressed() && calibrationDone ) {
+        if( !Button_isPressed() && calibrationDone && wifiConnect) {
             ESP_LOGI(TAG,"---------------Init Sampling--------------");
             vTaskDelay(10/portTICK_PERIOD_MS);
             vTaskResume(SD_ISR);
             vTaskDelete(MPU_CALIB_ISR);
             vTaskDelete(INIT_ISR);
+            vTaskDelete(WIFI_ISR);
         }
     }
 
@@ -165,7 +176,10 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 accumulator.Ax /= QUEUE_LENGTH;
                 accumulator.Ay /= QUEUE_LENGTH;
                 accumulator.Az /= QUEUE_LENGTH;
-                ESP_LOGI(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
+
+                #ifdef DEBUG_MODE
+                    ESP_LOGI(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
+                #endif
 
                 if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
                     ESP_LOGI(TAG,"Calibration Fail");
@@ -215,6 +229,21 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     }
 }
 
+void IRAM_ATTR wifi_connectTask(void *pvParameters){
+
+    ESP_LOGI(TAG,"WIFI connect task");
+
+    while (1) {
+        if (wifiConnect == false) {
+            if( WIFI_connect() == ESP_OK ) {
+                wifiConnect = true;
+                vTaskSuspend(WIFI_ISR);
+            }
+            vTaskDelay(1000/portTICK_PERIOD_MS);
+        }
+    }
+
+}
 
 esp_err_t ESP32_initQueue() {
     dataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);

@@ -18,6 +18,7 @@
 #include "sd_card/sd_card.h"
 #include "mpu_9250/mpu9250.h"
 #include "button/button.h"
+#include "wifi/wifi.h"
 
 
 // Para la publicacion de mensajes por consola
