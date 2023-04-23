@@ -7,11 +7,7 @@
 *      Author: jaatadia@gmail.com
 */
 
-#include "../main.h"
-
 #include "wifi.h"
-
-
 
 /* The examples use WiFi configuration that you can set via project configuration menu
 
