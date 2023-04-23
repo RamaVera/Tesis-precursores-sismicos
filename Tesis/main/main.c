@@ -6,12 +6,20 @@
  */
 #include "main.h"
 
-#define DEBUG_MODE
+#define DEBUG
+#ifdef DEBUG
+#define DEBUG_PRINT(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#define DEBUG_PRINT_INTERRUPT(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT(tag, fmt, ...) do {} while (0)
+#define DEBUG_PRINT_INTERRUPT(fmt, ...) do {} while (0)
+#endif
 /************************************************************************
 * Variables Globales
 ************************************************************************/
 #define QUEUE_LENGTH 50
 #define QUEUE_ITEM_SIZE sizeof(MPU9250_t)
+
 
 TaskHandle_t INIT_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
@@ -43,29 +51,29 @@ void IRAM_ATTR wifi_connectTask(void *pvParameters);
 void app_main(void) {
 
     defineLogLevels();
+
     if( Button_init()           != ESP_OK) return;
     if( SD_init()               != ESP_OK) return;
     if( MPU9250_init()          != ESP_OK) return;
     if( WIFI_init()             != ESP_OK) return;
-    if( MPU9250_attachInterruptWith (mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
+    if( MPU9250_attachInterruptWith (mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
     if( ESP32_initSemaphores()  != ESP_OK) return;
     if( ESP32_initQueue()       != ESP_OK) return;
 
+    WDT_disableOnAllCores();
+    ESP_LOGI(TAG, "Creating tasks");
+    xTaskCreatePinnedToCore(esp32_initTask, "esp32_initTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 1,&INIT_ISR, 1);
 
-
-    ESP_LOGI(TAG, "Initiating tasks");
-    xTaskCreatePinnedToCore(esp32_initTask, "esp32_initTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 10,&INIT_ISR, 1);
-
-    xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 1, &MPU_ISR, 0);
+    xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 3, &MPU_ISR, 0);
     vTaskSuspend(MPU_ISR);
 
-    xTaskCreatePinnedToCore(mpu9250_calibrationTask, "mpu9250_calibrationTask", 1024 * 16, NULL, tskIDLE_PRIORITY, &MPU_CALIB_ISR, 0);
+    xTaskCreatePinnedToCore(mpu9250_calibrationTask, "mpu9250_calibrationTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &MPU_CALIB_ISR, 0);
     vTaskSuspend(MPU_CALIB_ISR);
 
-    xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR, 1);
+    xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR, 0);
     vTaskSuspend(SD_ISR);
 
-    xTaskCreatePinnedToCore(wifi_connectTask, "wifi_connect", 1024 * 16, NULL, tskIDLE_PRIORITY + 10, &WIFI_ISR, 0);
+    xTaskCreatePinnedToCore(wifi_connectTask, "wifi_connect", 1024 * 16, NULL, tskIDLE_PRIORITY + 4, &WIFI_ISR, 1);
     vTaskSuspend(WIFI_ISR);
 
 }
@@ -73,7 +81,6 @@ void app_main(void) {
 void defineLogLevels() {
     esp_log_level_set("MAIN", ESP_LOG_INFO );
     esp_log_level_set("MPU9250", ESP_LOG_INFO );
-    esp_log_level_set("TAREAS", ESP_LOG_INFO );
     esp_log_level_set("SD_CARD", ESP_LOG_INFO );
     esp_log_level_set("WIFI", ESP_LOG_ERROR );
     esp_log_level_set("MQTT", ESP_LOG_INFO );
@@ -85,32 +92,48 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-#ifdef DEBUG_MODE
-    ets_printf(">>>>>");
-#endif
+    DEBUG_PRINT_INTERRUPT(">>>>> \n");
 }
 
 void IRAM_ATTR esp32_initTask(void *pvParameters) {
     ESP_LOGI(TAG, "Tasks ready to init");
 
-    bool firstTime = true;
+    bool firstTimeForSetup = true;
+    bool firstTimeForCalibration = true;
+    bool firstTimeForWifiConnection = true;
 
     while (1) {
-        if( Button_isPressed() && firstTime ) {
-            ESP_LOGI(TAG,"--------------Init Calibration-----------------");
+        if( Button_isPressed() && firstTimeForSetup ) {
+            firstTimeForSetup = false;
+            DEBUG_PRINT(TAG,"--------------Init Setup-----------------");
             vTaskDelay(10/portTICK_PERIOD_MS);
-            firstTime = false;
+            vTaskResume(WIFI_ISR);
             vTaskResume(MPU_ISR);
             vTaskResume(MPU_CALIB_ISR);
-            vTaskResume(WIFI_ISR);
+            MPU9250_enableInterrupt(true);
         }
-        if( !Button_isPressed() && calibrationDone && wifiConnect) {
-            ESP_LOGI(TAG,"---------------Init Sampling--------------");
+        if( !Button_isPressed() && calibrationDone && firstTimeForCalibration) {
+            firstTimeForCalibration = false;
+            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelete(MPU_CALIB_ISR);
+            MPU9250_enableInterrupt(false);
+            DEBUG_PRINT(TAG,"---------------Finish Calibration--------------");
+
+        }
+        if( !Button_isPressed() && wifiConnect && firstTimeForWifiConnection) {
+            firstTimeForWifiConnection = false;
+            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelete(WIFI_ISR);
+            DEBUG_PRINT(TAG,"---------------Finish Connection--------------");
+
+        }
+        if( !Button_isPressed() && wifiConnect && calibrationDone) {
+            DEBUG_PRINT(TAG,"---------------Init Sampling--------------");
             vTaskDelay(10/portTICK_PERIOD_MS);
             vTaskResume(SD_ISR);
-            vTaskDelete(MPU_CALIB_ISR);
+            MPU9250_enableInterrupt(true);
+            WDT_enableWDTForCores();
             vTaskDelete(INIT_ISR);
-            vTaskDelete(WIFI_ISR);
         }
     }
 
@@ -119,47 +142,42 @@ void IRAM_ATTR esp32_initTask(void *pvParameters) {
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
 
     ESP_LOGI(TAG, "Mpu task init");
-
+    WDT_add();
     while (1) {
         // xSemaphore_newDataOnMPU toma el semaforo principal.
         // Solo se libera si la interrupcion de nuevo dato disponible lo libera.
         // Para que la interrupcion se de, tiene que llamarse a mpu9250_ready
         xSemaphoreTake(xSemaphore_newDataOnMPU, portMAX_DELAY);
-        #ifdef DEBUG_MODE
-            ESP_LOGI(TAG, "MPU Task Global > take semaphore");
-        #endif
+        //DEBUG_PRINT(TAG, "MPU Task Global > take semaphore");
 
         // xSemaphore_queue toma el semaforo para que se acceda a la cola
         if(xSemaphoreTake(xSemaphore_dataIsSavedOnQueue, portMAX_DELAY) == pdTRUE){
-            #ifdef DEBUG_MODE
-            ESP_LOGI(TAG, "MPU Task Queue > take semaphore");
-            #endif
+            //DEBUG_PRINT(TAG, "MPU Task Queue > take semaphore");
 
             MPU9250_t data;
             if( MPU9250_ReadAcce(&data)  != ESP_OK){
                 ESP_LOGE(TAG, "MPU Task Fail getting data");
                 continue;
             }
-            ESP_LOGI(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
+            DEBUG_PRINT(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
             xQueueSend(dataQueue, &data, portMAX_DELAY);
-            #ifdef DEBUG_MODE
-            ESP_LOGI(TAG,"MPU Task Sent item");
-            #endif
+            //DEBUG_PRINT(TAG,"MPU Task Sent item");
             xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
-            #ifdef DEBUG_MODE
-            ESP_LOGI(TAG,"MPU Task Queue > free semaphore");
-            #endif
+            //DEBUG_PRINT(TAG,"MPU Task Queue > free semaphore");
 
 
         }
         // Avisa que el dato fue leido por lo que baja el pin de interrupcion esperando que se haga un nuevo
         // flanco ascendente
         mpu9250_ready();
+        WDT_reset();
     }
 }
 
 void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
+
     ESP_LOGI(TAG,"MPU calibration task init");
+    WDT_add();
 
     MPU9250_t item;
     MPU9250_t accumulator;
@@ -177,9 +195,7 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 accumulator.Ay /= QUEUE_LENGTH;
                 accumulator.Az /= QUEUE_LENGTH;
 
-                #ifdef DEBUG_MODE
-                    ESP_LOGI(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
-                #endif
+                DEBUG_PRINT(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
 
                 if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
                     ESP_LOGI(TAG,"Calibration Fail");
@@ -191,12 +207,14 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
             }
         }
+        WDT_reset();
     }
 }
 
 void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
     ESP_LOGI(TAG,"SD task init");
+    WDT_add();
 
     MPU9250_t item;
     char data[100];
@@ -209,29 +227,26 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
         // xSemaphore_dataIsSavedOnQueue actua como semaforo mutex para que no
         // se acceda al la cola desde los dos task
         if(xSemaphoreTake(xSemaphore_dataIsSavedOnQueue, portMAX_DELAY) == pdTRUE) {
-            #ifdef DEBUG_MODE
-            ESP_LOGI(TAG, "SD Task Guardo Dato > Tomo semaforo");
-            #endif
+            //DEBUG_PRINT(TAG, "SD Task Guardo Dato > Tomo semaforo");
 
             // Si no hay elementos en la cola no tiene sentido esperar a que aparezcan
             if ( xQueueReceive(dataQueue, &item, 0) == pdTRUE){
-                #ifdef DEBUG_MODE
-                ESP_LOGI(TAG, "SD Task Received item");
-                #endif
+                DEBUG_PRINT(TAG, "SD Task Received item");
                 sprintf(data, "%02f\t%02f\t%02f\t", item.Ax,item.Ay,item.Az);
                 SD_writeData(data, newLine);
             }
             xSemaphoreGive(xSemaphore_dataIsSavedOnQueue);
-            #ifdef DEBUG_MODE
-            ESP_LOGI(TAG, "SD Task Guardo Dato > Libero semaforo");
-            #endif
+            //DEBUG_PRINT(TAG, "SD Task Guardo Dato > Libero semaforo");
         }
+        WDT_reset();
     }
 }
 
 void IRAM_ATTR wifi_connectTask(void *pvParameters){
 
+
     ESP_LOGI(TAG,"WIFI connect task");
+    WDT_add();
 
     while (1) {
         if (wifiConnect == false) {
@@ -242,6 +257,7 @@ void IRAM_ATTR wifi_connectTask(void *pvParameters){
             vTaskDelay(1000/portTICK_PERIOD_MS);
         }
     }
+    WDT_reset();
 
 }
 

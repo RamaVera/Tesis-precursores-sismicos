@@ -19,6 +19,7 @@
 #include "mpu_9250/mpu9250.h"
 #include "button/button.h"
 #include "wifi/wifi.h"
+#include "watchdog/watchdog.h"
 
 
 // Para la publicacion de mensajes por consola
