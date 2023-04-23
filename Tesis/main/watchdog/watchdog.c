@@ -5,7 +5,7 @@ TaskHandle_t IDLE_CORE_ONE_ISR = NULL;
 
 bool isWDTEnable = true;
 
-void WDT_enableWDTForCores(void){
+void WDT_enableOnAllCores(void){
     esp_task_wdt_init(defaultTimeout, true);
     IDLE_CORE_ZERO_ISR = xTaskGetIdleTaskHandleForCPU(0);
     IDLE_CORE_ONE_ISR = xTaskGetIdleTaskHandleForCPU(1);

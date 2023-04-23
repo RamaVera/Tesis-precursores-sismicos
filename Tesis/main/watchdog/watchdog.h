@@ -5,7 +5,7 @@
 
 static const int defaultTimeout = 5; // 5 segs
 
-void WDT_enableWDTForCores(void);
+void WDT_enableOnAllCores(void);
 void WDT_disableOnAllCores(void);
 void WDT_add();
 void WDT_remove();
