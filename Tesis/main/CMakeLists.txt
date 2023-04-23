@@ -7,4 +7,5 @@ idf_component_register(
                 "watchdog/watchdog.c"
                 "adc/adc.c"
                 "sd_card/sd_card.c"
+                "mqtt/mqtt.c"
                 )
