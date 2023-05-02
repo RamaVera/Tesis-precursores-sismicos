@@ -14,40 +14,33 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_vfs_fat.h"
+#include "mqtt_client.h"
+#include "cJSON.h"
+
 
 #include "sd_card/sd_card.h"
 #include "mpu_9250/mpu9250.h"
 #include "button/button.h"
 #include "wifi/wifi.h"
 #include "watchdog/watchdog.h"
+#include "mqtt/mqtt.h"
 
 
-// Para la publicacion de mensajes por consola
-typedef struct mentaje_t {
-        bool mensaje_nuevo;
-        char mensaje[100];
-} mensaje_t;
+typedef enum status_t{
+    INITIATING,
+    WAITING_TO_INIT,
+    SETTING_UP,
+    INIT_SAMPLING,
+    DONE,
+    ERROR,
+}status_t;
 
-
-// Para cargar la configuracion del sistema
-typedef struct nodo_config_t {
-  unsigned char wifi_ssid[32];
-  unsigned char wifi_password[64];
-  char mqtt_ip_broker[16];
-  char ip_tictoc_server[16];
-  char usuario_mqtt[64];
-  char password_mqtt[64];
-  uint32_t puerto_mqtt;
-} nodo_config_t;
-
-// ESTADOS MUESTREO
-#define ESTADO_ESPERANDO_MENSAJE_DE_INICIO  0
-#define ESTADO_CONFIGURAR_ALARMA_INICIO_A   1
-#define ESTADO_CONFIGURAR_ALARMA_INICIO_B   2
-#define ESTADO_ESPERANDO_INICIO             3
-#define ESTADO_MUESTREANDO                  4
-#define ESTADO_FINALIZANDO_MUESTREO         5
-#define ESTADO_MUESTREANDO_ASYNC            6
+const char * statusAsString[] = { "INITIATING",
+                         "WAITING_TO_INIT",
+                         "SETTING_UP",
+                         "INIT_SAMPLING",
+                         "DONE",
+                         "ERROR"};
 
 
 //////////////////////////////////////////////////////////////////
