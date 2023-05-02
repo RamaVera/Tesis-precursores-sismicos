@@ -106,7 +106,7 @@ esp_err_t WIFI_init(void){
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-
+        esp_wifi_set_ps(0);
     return ESP_OK;
 }
 
