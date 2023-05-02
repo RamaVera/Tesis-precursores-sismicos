@@ -23,10 +23,14 @@ esp_err_t MPU9250_init(void) {
             .dummy_bits = 0,
             .clock_speed_hz = 400000,                 //Clock out at 400KHz
             .mode = 0,                                //SPI mode 0
-            .spics_io_num = MPU_PIN_NUM_CS,               //CS pin
+            .spics_io_num = MPU_PIN_NUM_CS,           //CS pin
             .queue_size = 1,                          //queue size
             .flags = 0,
+            .pre_cb = NULL,
+            .post_cb = NULL,
     };
+
+
     //Initialize the SPI bus
     // Sep/24/2017 SPI DMA gives corrupted data on MPU-9250 fifo access
     ret = spi_bus_initialize(HSPI_HOST, &buscfg, MPU_SPI_DMA_CHAN);
@@ -44,9 +48,9 @@ esp_err_t MPU9250_init(void) {
 
     uint8_t rv;
     rv = mpu9250_read(WHO_IM_I);
-    ESP_LOGI(TAG, "MPU9250: retrieved id: %02x\n", rv);
+    ESP_LOGI(TAG, "MPU9250: retrieved id: %02x", rv);
     if ( rv != MPU9250_ID  && rv != MPU92XX_ID) {
-        ESP_LOGE(TAG, "MPU9250: Wrong id: %02x\n", rv);
+        ESP_LOGE(TAG, "MPU9250: Wrong id: %02x", rv);
         return ESP_FAIL;
     }
 
@@ -113,7 +117,7 @@ esp_err_t mpu9250_start(void)
     if( mpu9250_write(ACCEL_CONFIG, 0x08)   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
     // FCHOICE [1] A_DLPF_CFG 0x02 3dB BW:9Hz Fs:1 KHz DLPF Delay:2.88
     if( mpu9250_write(ACCEL_CONFIG2, 0x02)  != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // Set sample rate = gyroscope output rate 8000Khz/(1 + SMPLRT_DIV) ---> 1000Khz / (1+0) = 1000Khz
+    // Set sample rate = gyroscope output rate 8000Khz/(1 + SMPLRT_DIV) ---> 1000hz / (1+0) = 1000hz
     if( mpu9250_write(SMPLRT_DIV, 0x00)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
     // Power down magnetometer
     if( mpu9250_write(AK8963_CNTL1, 0x00)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
@@ -433,7 +437,6 @@ bool mpu9250_ready(void)
     uint8_t val = mpu9250_read(INT_STATUS);
     return (val & 1);
 }
-
 
 int mpu9250_fifo_count(void)
 {
