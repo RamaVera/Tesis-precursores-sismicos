@@ -6,13 +6,19 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-#define IP_BROKER_MQTT
-#define PORT_MQTT
+#define IP_BROKER_MQTT "broker.emqx.io"
+#define PORT_MQTT 1883
 #define USER_MQTT
 #define PASSWD_MQTT
 
+#include <stdio.h>
+#include <string.h>
+#include "esp_log.h"
+#include "sdkconfig.h"
+#include "mqtt_client.h"
+
 /* Prototipos */
-void MQTT_init(void);
+esp_err_t MQTT_init(void);
 void MQTT_processTopic(const char * , const char * );
 void MQTT_subscribe(const char * );
 void MQTT_publish(const char * , const char * ,int);
