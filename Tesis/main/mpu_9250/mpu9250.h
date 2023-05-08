@@ -120,6 +120,9 @@ static const float ADC_16BIT_RESOLUTION = 0.15f;
 // AK8963 data are little endian
 #define le16_val(v, idx) ((int16_t)(((uint16_t)v[2*idx+1] << 8) | v[2*idx]))
 
+#define MPU_SPI_DMA_CHAN    0
+
+
 typedef struct MPU9250_t {
     float Ax, Ay, Az;         /*!< Accelerometer raw data */
 } MPU9250_t;
