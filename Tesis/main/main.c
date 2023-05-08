@@ -8,11 +8,11 @@
 
 #define DEBUG
 #ifdef DEBUG
-#define DEBUG_PRINT(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
-#define DEBUG_PRINT_INTERRUPT(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
+#define DEBUG_PRINT_MAIN(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
 #else
-#define DEBUG_PRINT(tag, fmt, ...) do {} while (0)
-#define DEBUG_PRINT_INTERRUPT(fmt, ...) do {} while (0)
+#define DEBUG_PRINT_MAIN(tag, fmt, ...) do {} while (0)
+#define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) do {} while (0)
 #endif
 /************************************************************************
 * Variables Globales
@@ -115,7 +115,7 @@ void app_main(void) {
                     vTaskDelete(MPU_ISR);
                     vTaskDelete(MPU_CALIB_ISR);
 
-                    DEBUG_PRINT(TAG,"---------------Finish Calibration--------------");
+                    DEBUG_PRINT_MAIN(TAG,"---------------Finish Calibration--------------");
                     nextStatus = INIT_SAMPLING;
                 }
                 break;
@@ -143,7 +143,7 @@ void printStatus(status_t nextStatus) {
     static status_t lastStatus = ERROR;
 
     if( lastStatus != nextStatus) {
-        DEBUG_PRINT(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
+        DEBUG_PRINT_MAIN(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
         lastStatus = nextStatus;
     }
 }
@@ -164,7 +164,7 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    DEBUG_PRINT_INTERRUPT(">>>>> \n");
+    DEBUG_PRINT_INTERRUPT_MAIN(">>>>> \n");
 }
 
 //------------------------------ TASKS -----------------------------------------
@@ -189,7 +189,7 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
             xSemaphoreGive(xSemaphore_newDataOnMPU);
             continue;
         }
-        DEBUG_PRINT(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
+        DEBUG_PRINT_MAIN(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
 
         // xSemaphore_queue toma el semaforo para que se acceda a la cola
         if(xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) == pdTRUE){
@@ -234,7 +234,7 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 accumulator.Ay /= QUEUE_LENGTH;
                 accumulator.Az /= QUEUE_LENGTH;
 
-                DEBUG_PRINT(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
+                DEBUG_PRINT_MAIN(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
 
                 if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
                     ESP_LOGI(TAG,"Calibration Fail");
@@ -269,7 +269,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                 while(uxQueueMessagesWaiting(SDDataQueue) != 0){
                     if (xQueueReceive(SDDataQueue, &aReceivedPacket, 0) == pdTRUE){
                         sdData = getSDDataFromPacket(aReceivedPacket);
-                        DEBUG_PRINT(TAG, "SD Task Received sdData");
+                        DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
                         char * printPattern;
                         if (uxQueueMessagesWaiting(SDDataQueue)>0){
                             printPattern = (char *) &SD_LINE_PATTERN_WITH_NEW_LINE;
@@ -300,7 +300,7 @@ void IRAM_ATTR wifi_publishDataTask(void *pvParameters){
         vTaskDelay(1);
         if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY) == pdTRUE) {
             if (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
-                DEBUG_PRINT(TAG, "MQTT Task Received item");
+                DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
                 cJSON *jsonAccelData;
                 jsonAccelData = cJSON_CreateObject();
                 cJSON_AddNumberToObject(jsonAccelData, "accel_x", item.Ax);
@@ -327,7 +327,7 @@ void IRAM_ATTR adc_readingTask(void *pvParameters) {
     while (1) {
         vTaskDelay(1);
         int data = ADC_GetRaw();
-        DEBUG_PRINT(TAG, "ADC Task Received item %d", data);
+        DEBUG_PRINT_MAIN(TAG, "ADC Task Received item %d", data);
 
         if(xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE){
             QueuePacket_t aPacket;
@@ -349,7 +349,7 @@ void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
         takeAllSensorSemaphores();
         UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
         UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
-        DEBUG_PRINT(TAG,"Fusion data Mpu:%d y ADC:%d",lenOfMPUQueue,lenOfADCQueue);
+        DEBUG_PRINT_MAIN(TAG,"Fusion data Mpu:%d y ADC:%d",lenOfMPUQueue,lenOfADCQueue);
         CorrelateDataAndSendToSDQueue(lenOfMPUQueue, lenOfADCQueue);
         giveAllSensorSemaphores();
     }
@@ -432,11 +432,11 @@ void giveAllSensorSemaphores() {
 }
 
 void takeAllSensorSemaphores() {
-    bool bothQueueAreEmpty = pdFALSE;
+    bool bothQueueHasNewData = pdFALSE;
     bool mpuAlreadyTaken = false;
     bool adcAlreadyTaken = false;
     bool sdAlreadyTaken = false;
-    while (!bothQueueAreEmpty){
+    while (!bothQueueHasNewData){
         vTaskDelay(1);
         UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
         UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
@@ -464,7 +464,7 @@ void takeAllSensorSemaphores() {
                 }
             }
             if (mpuAlreadyTaken && adcAlreadyTaken && sdAlreadyTaken ){
-                bothQueueAreEmpty = pdTRUE;
+                bothQueueHasNewData = pdTRUE;
             }
         }
     }

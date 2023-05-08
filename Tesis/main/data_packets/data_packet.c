@@ -5,11 +5,9 @@ static const char *TAG = "DATA_PACKET"; // Para los mensajes de LOG
 
 #define DEBUG_DATA_PACKET
 #ifdef DEBUG_DATA_PACKET
-#define DEBUG_PRINT(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
-#define DEBUG_PRINT_INTERRUPT(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
+#define DEBUG_PRINT_DATA_PACKET(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
-#define DEBUG_PRINT(tag, fmt, ...) do {} while (0)
-#define DEBUG_PRINT_INTERRUPT(fmt, ...) do {} while (0)
+#define DEBUG_PRINT_DATA_PACKET(tag, fmt, ...) do {} while (0)
 #endif
 
 bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate) {
@@ -20,7 +18,7 @@ bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
     }
-    DEBUG_PRINT(TAG,"ADC Pido memoria para %p",adcData);
+    DEBUG_PRINT_DATA_PACKET(TAG,"ADC Pido memoria para %p",adcData);
 
     adcData->data = adcRawData;
     aPacket.dataElement = adcData;
@@ -34,7 +32,7 @@ ADC_t getADCDataFromPacket(struct QueuePacket aPacket) {
     ADC_t adcRawData;
     ADC_t * adcData = (ADC_t *) aPacket.dataElement;
     adcRawData.data = adcData->data;
-    DEBUG_PRINT(TAG,"ADC libero memoria para %p",aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"ADC libero memoria para %p",aPacket.dataElement);
     free(aPacket.dataElement);
     return adcRawData;
 }
@@ -47,7 +45,7 @@ bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, struct QueuePa
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
     }
-    DEBUG_PRINT(TAG,"MPU Pido memoria para %p",mpu9250data);
+    DEBUG_PRINT_DATA_PACKET(TAG,"MPU Pido memoria para %p",mpu9250data);
 
     mpu9250data->Ax = rawAx;
     mpu9250data->Ay = rawAy;
@@ -65,7 +63,7 @@ struct MPU9250_t getMPUDataFromPacket(struct QueuePacket aPacket) {
     mpuRawData.Ax = mpuData->Ax;
     mpuRawData.Ay = mpuData->Ay;
     mpuRawData.Az = mpuData->Az;
-    DEBUG_PRINT(TAG,"MPU libero memoria para %p",aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"MPU libero memoria para %p",aPacket.dataElement);
     free(aPacket.dataElement);
     return mpuRawData;
 }
@@ -78,7 +76,7 @@ bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, struct QueuePa
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
     }
-    DEBUG_PRINT(TAG,"SD Pido memoria para %p",SDdata);
+    DEBUG_PRINT_DATA_PACKET(TAG,"SD Pido memoria para %p",SDdata);
 
     SDdata->adcData = adcRawData;
     SDdata->mpuData = mpuRawData;
@@ -94,7 +92,7 @@ struct SD_data_t getSDDataFromPacket(struct QueuePacket aPacket) {
     SD_data_t * SDData = (SD_data_t *) aPacket.dataElement;
     SDRawData.mpuData = SDData->mpuData;
     SDRawData.adcData = SDData->adcData;
-    DEBUG_PRINT(TAG,"SD libero memoria para %p",aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"SD libero memoria para %p",aPacket.dataElement);
     free(aPacket.dataElement);
     return SDRawData;
 }
