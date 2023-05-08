@@ -24,7 +24,8 @@
 #include "wifi/wifi.h"
 #include "watchdog/watchdog.h"
 #include "mqtt/mqtt.h"
-
+#include "adc/adc.h"
+#include "data_packets/data_packet.h"
 
 typedef enum status_t{
     INITIATING,
@@ -54,12 +55,11 @@ const char * statusAsString[] = { "INITIATING",
   ESP_LOG_VERBOSE → Bigger chunks of debugging information, or frequent messages which can potentially flood the output.
 */
 void defineLogLevels();
+void printStatus(status_t nextStatus);
+
+TickType_t tickAbsDiff(TickType_t tick1, TickType_t tick2);
+
 esp_err_t ESP32_initSemaphores();
 esp_err_t ESP32_initQueue();
-
-
-
-
-
 
 #endif /* MAIN_H_ */
