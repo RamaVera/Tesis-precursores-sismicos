@@ -8,4 +8,5 @@ idf_component_register(
                 "adc/adc.c"
                 "sd_card/sd_card.c"
                 "mqtt/mqtt.c"
+                "data_packets/data_packet.c"
                 )
