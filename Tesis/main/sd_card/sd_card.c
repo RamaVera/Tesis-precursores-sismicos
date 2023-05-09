@@ -9,7 +9,7 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-//#define SD_DEBUG_MODE
+#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
@@ -97,74 +97,43 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine){
     return ESP_OK;
 }
 
-//
-//void leer_config_SD (void)
-//{
-//    FILE *f_config;
-//    char buffer[100];
-//    char comando[100];
-//    char argumento[100];
-//
-//
-//    if ((f_config = fopen(MOUNT_POINT "/CONFIG.TXT", "r")) == NULL) {
-//        ESP_LOGI(TAG, "Error! opening config file");
-//        // Program exits if the file pointer returns NULL.
-//    }
-//
-//    else{
-//        ESP_LOGI(TAG, "Archivo de configuracion config.txt abierto");
-//
-//        while (fgets(buffer, sizeof(buffer),f_config)) { // Leo una línea de archivo
-//
-//            sscanf(buffer,"%s \" %[^\"]s", comando, argumento); // Separo comando y argumento
-//
-//            if(strcmp("wifi_ssid", comando)==0) {
-//                ESP_LOGI(TAG, "wifi_ssid configurado");
-//                memcpy(datos_config.wifi_ssid,argumento, sizeof(argumento));
-////                                strcpy(datos_config.wifi_ssid,argumento);
-//                //printf("Argumento: %s \n", datos_config.wifi_ssid );
-//            }
-//
-//            if(strcmp("wifi_password", comando)==0) {
-//                ESP_LOGI(TAG, "Password_wifi configurado");
-//                memcpy(datos_config.wifi_password,argumento, sizeof(argumento));
-//
-////                                strcpy(datos_config.wifi_password,argumento);
-//                // printf("Argumento %s \n", datos_config.wifi_password );
-//            }
-//
-//            if(strcmp("mqtt_ip_broker", comando)==0) {
-//                ESP_LOGI(TAG, "mqtt_ip_broker configurado");
-//                strcpy(datos_config.mqtt_ip_broker,argumento);
-//                // printf("Argumento %s \n", datos_config.wifi_password );
-//            }
-//
-//            if(strcmp("ip_tictoc_server", comando)==0) {
-//                ESP_LOGI(TAG, "ip_tictoc_server configurado");
-//                strcpy(datos_config.ip_tictoc_server,argumento);
-//                // printf("Argumento %s \n", datos_config.wifi_password );
-//            }
-//
-//            if(strcmp("usuario_mqtt", comando)==0) {
-//                ESP_LOGI(TAG, "usuario_mqtt configurado");
-//                strcpy(datos_config.usuario_mqtt,argumento);
-//                // printf("Argumento %s \n", datos_config.wifi_password );
-//            }
-//
-//            if(strcmp("password_mqtt", comando)==0) {
-//                ESP_LOGI(TAG, "password_mqtt configurado");
-//                strcpy(datos_config.password_mqtt,argumento);
-//                // printf("Argumento %s \n", datos_config.wifi_password );
-//            }
-//
-//            if(strcmp("puerto_mqtt", comando)==0) {
-//                ESP_LOGI(TAG, "puerto_mqtt configurado");
-//                datos_config.puerto_mqtt = atoi(argumento);
-//                //printf("Puerto MQTT: %d \n", datos_config.puerto_mqtt );
-//            }
-//
-//        }
-//        fclose(f_config);
-//        ESP_LOGI(TAG, "Archivo de configuracion config.txt cerrado");
-//    }
-//}
+
+esp_err_t SD_getInitialParams(Config_params_t *configParams) {
+    FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
+    if (config_file == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return ESP_FAIL;
+    }
+    char buffer[1024];
+    if (fgets(buffer, sizeof(buffer), config_file) == NULL) { // Leer la única línea del archivo
+        ESP_LOGE(TAG, "Failed to read file ");
+        fclose(config_file);
+        return ESP_FAIL;
+    }
+    fclose(config_file);
+
+    char *fields[] = {
+            configParams->wifi_ssid,
+            configParams->wifi_password,
+            configParams->mqtt_ip_broker,
+            configParams->mqtt_user,
+            configParams->mqtt_password,
+            configParams->mqtt_port};
+
+    const int num_fields = sizeof(fields)/sizeof(fields[0]);
+
+    char *token = strtok(buffer, " | ");
+    int i = 0;
+    while (token != NULL && i < num_fields) {
+        strcpy(fields[i], token);
+        token = strtok(NULL, " | ");
+        i++;
+    }
+    DEBUG_PRINT_SD(TAG,"WIFI SSID: %s", configParams->wifi_ssid);
+    DEBUG_PRINT_SD(TAG,"Password: %s", configParams->wifi_password);
+    DEBUG_PRINT_SD(TAG,"MQTT IP Broker: %s", configParams->mqtt_ip_broker);
+    DEBUG_PRINT_SD(TAG,"MQTT User: %s", configParams->mqtt_user);
+    DEBUG_PRINT_SD(TAG,"MQTT Password: %s", configParams->mqtt_password);
+    DEBUG_PRINT_SD(TAG,"MQTT Port: %s",  configParams->mqtt_port);
+    return ESP_OK;
+}

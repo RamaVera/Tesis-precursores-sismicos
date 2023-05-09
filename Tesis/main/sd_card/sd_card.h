@@ -14,12 +14,25 @@
 #include "driver/sdmmc_host.h"
 #include "../pinout.h"
 
+#define MAX_LENGTH 32
+
+typedef struct Config_params_t{
+    char wifi_ssid[MAX_LENGTH];
+    char wifi_password[MAX_LENGTH];
+    char mqtt_ip_broker[MAX_LENGTH];
+    char mqtt_user[MAX_LENGTH];
+    char mqtt_password[MAX_LENGTH];
+    char mqtt_port[MAX_LENGTH];
+}Config_params_t;
+
 /*****************************************************************************
 * Prototipos
 *****************************************************************************/
 
 esp_err_t SD_init(void);
 esp_err_t SD_writeData(char dataAsString[], bool withNewLine);
+esp_err_t SD_getInitialParams(Config_params_t *configParams);
+
 
 /*****************************************************************************
 * Definiciones
