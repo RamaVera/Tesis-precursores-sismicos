@@ -62,29 +62,33 @@ void giveAllSensorSemaphores();
 
 void app_main(void) {
 
+    Config_params_t params;
     defineLogLevels();
     status_t nextStatus = PRE_INIT;
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
         switch (nextStatus) {
-            case PRE_INIT:
+            case PRE_INIT:{
                 if (SD_init() != ESP_OK) return;
-
+                SD_getInitialParams(&params);
                 nextStatus = INITIATING;
                 break;
-
+            }
             case INITIATING: {
                 if (Button_init() != ESP_OK) return;
                 if (ADC_Init() != ESP_OK) return;
                 if (MPU9250_init() != ESP_OK) return;
-                if (WIFI_init() != ESP_OK) return;
                 if (MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
+                if (WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
+                if (WIFI_connect() == ESP_OK ) {
+                    if (MQTT_init(params.mqtt_ip_broker,
+                                  params.mqtt_port,
+                                  params.mqtt_user,
+                                  params.mqtt_password) != ESP_OK) return;
+                }
                 if (ESP32_initSemaphores() != ESP_OK) return;
                 if (ESP32_initQueue() != ESP_OK) return;
-                if (WIFI_connect() == ESP_OK ) {
-                    if (MQTT_init() != ESP_OK) return;
-                }
                 nextStatus = WAITING_TO_INIT;
                 break;
             }
