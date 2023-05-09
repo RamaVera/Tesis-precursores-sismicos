@@ -6,6 +6,7 @@
 #define ADC_H
 
 #include "driver/adc.h"
+#include "../pinout.h"
 
 typedef struct ADC_t{
     int data;

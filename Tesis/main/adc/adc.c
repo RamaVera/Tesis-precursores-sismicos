@@ -1,6 +1,8 @@
 
 #include "adc.h"
 
+const int ADC_READING_PIN = ADC_PIN;
+
 esp_err_t ADC_Init() {
     // Configurar el modo de operación del ADC
     adc1_config_width(ADC_WIDTH_BIT_12);

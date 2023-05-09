@@ -44,12 +44,14 @@
 #define MPU_PIN_NUM_MISO_ADO 12
 #define MPU_PIN_NUM_MOSI_SDA 13
 #define MPU_PIN_NUM_CLK_SCL  14
-#define MPU_PIN_NUM_CS   15
+#define MPU_PIN_NUM_CS   25
 #define MPU_PIN_NUM_INT 26
 
 #define SD_PIN_NUM_MISO 19
 #define SD_PIN_NUM_MOSI 23
 #define SD_PIN_NUM_CLK  18
-#define SD_PIN_NUM_CS   5
+#define SD_PIN_NUM_CS   21
+
+#define ADC_PIN 33
 
 #define BOTON_1   27
