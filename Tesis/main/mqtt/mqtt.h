@@ -18,7 +18,7 @@
 #include "mqtt_client.h"
 
 /* Prototipos */
-esp_err_t MQTT_init(void);
+esp_err_t MQTT_init(char ip_broker[32], char port[32], char user[32], char password[32]);
 void MQTT_processTopic(const char * , const char * );
 void MQTT_subscribe(const char * );
 void MQTT_publish(const char * , const char * ,int);
