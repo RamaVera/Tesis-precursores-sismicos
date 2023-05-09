@@ -23,14 +23,10 @@
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-
-
-#define WIFI_SSID "Casita"        //SSID WIFI (Nombre de red)
-#define WIFI_PASS "MushuMisty94"        //Contraseña WIFI
 #define EXAMPLE_ESP_MAXIMUM_RETRY  10
 
 
-esp_err_t WIFI_init(void);
+esp_err_t WIFI_init(char ssid[32], char pass[32]);
 esp_err_t WIFI_connect(void);
 
 

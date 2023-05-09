@@ -63,7 +63,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
         }
 }
 
-esp_err_t WIFI_init(void){
+esp_err_t WIFI_init(char ssid[32], char password[32]) {
 
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -94,19 +94,13 @@ esp_err_t WIFI_init(void){
                                                             &event_handler,
                                                             NULL,
                                                             &instance_got_ip));
-
-        wifi_config_t wifi_config = {
-                .sta = {
-                        .ssid = WIFI_SSID,
-                        .password = WIFI_PASS,
-                },
-        };
-
+        wifi_config_t wifi_config = {0};
+        memcpy(wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+        memcpy(wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-        esp_wifi_set_ps(0);
     return ESP_OK;
 }
 
@@ -128,9 +122,9 @@ esp_err_t WIFI_connect() {
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
     * happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", WIFI_SSID, WIFI_PASS);
+        ESP_LOGI(TAG, "connected to ap");
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", WIFI_SSID, WIFI_PASS);
+        ESP_LOGI(TAG, "Failed to connect");
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
