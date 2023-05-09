@@ -10,6 +10,12 @@
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
 //#define SD_DEBUG_MODE
+#ifdef SD_DEBUG_MODE
+#define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT_SD(tag, fmt, ...) do {} while (0)
+#endif
+
 
 sdmmc_card_t *card;
 
@@ -23,9 +29,7 @@ esp_err_t SD_init(void){
             .allocation_unit_size = 16 * 1024
     };
     const char mount_point[] = MOUNT_POINT;
-    #ifdef SD_DEBUG_MODE
-        ESP_LOGI(TAG, "Initializing SD card");
-    #endif
+    DEBUG_PRINT_SD(TAG, "Initializing SD card");
 
 
     // Use settings defined above to initialize SD card and mount FAT filesystem.
@@ -67,10 +71,7 @@ esp_err_t SD_init(void){
         }
         return ret;
     }
-    #ifdef SD_DEBUG_MODE
-        ESP_LOGI(TAG, "Filesystem mounted");
-    #endif
-
+    DEBUG_PRINT_SD(TAG, "Filesystem mounted");
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
@@ -83,18 +84,14 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine){
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
     }
-    #ifdef SD_DEBUG_MODE
-        ESP_LOGI(TAG, "File open");
-    #endif
+    DEBUG_PRINT_SD(TAG, "File open");
 
     if( withNewLine )
         fprintf(f,"%s \n",dataAsString);
     else
         fprintf(f,"%s",dataAsString);
 
-    #ifdef SD_DEBUG_MODE
-        ESP_LOGI(TAG, "File written");
-    #endif
+    DEBUG_PRINT_SD(TAG, "File written");
 
     fclose(f);
     return ESP_OK;

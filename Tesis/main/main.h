@@ -28,6 +28,7 @@
 #include "data_packets/data_packet.h"
 
 typedef enum status_t{
+    PRE_INIT,
     INITIATING,
     WAITING_TO_INIT,
     SETTING_UP,
@@ -36,7 +37,8 @@ typedef enum status_t{
     ERROR,
 }status_t;
 
-const char * statusAsString[] = { "INITIATING",
+const char * statusAsString[] = { "PRE_INIT",
+                         "INITIATING",
                          "WAITING_TO_INIT",
                          "SETTING_UP",
                          "INIT_SAMPLING",

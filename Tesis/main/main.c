@@ -63,14 +63,19 @@ void giveAllSensorSemaphores();
 void app_main(void) {
 
     defineLogLevels();
-    status_t nextStatus = INITIATING;
+    status_t nextStatus = PRE_INIT;
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
         switch (nextStatus) {
+            case PRE_INIT:
+                if (SD_init() != ESP_OK) return;
+
+                nextStatus = INITIATING;
+                break;
+
             case INITIATING: {
                 if (Button_init() != ESP_OK) return;
-                if (SD_init() != ESP_OK) return;
                 if (ADC_Init() != ESP_OK) return;
                 if (MPU9250_init() != ESP_OK) return;
                 if (WIFI_init() != ESP_OK) return;
@@ -109,7 +114,7 @@ void app_main(void) {
                 if( calibrationDone && firstTimeForCalibration) {
                     firstTimeForCalibration = false;
                     MPU9250_enableInterrupt(false);
-                    vTaskDelay(10/portTICK_PERIOD_MS);
+                    vTaskDelay(100/portTICK_PERIOD_MS);
                     WDT_removeTask(MPU_ISR);
                     WDT_removeTask(MPU_CALIB_ISR);
                     vTaskDelete(MPU_ISR);
