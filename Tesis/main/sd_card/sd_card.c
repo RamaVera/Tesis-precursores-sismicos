@@ -9,7 +9,7 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-#define SD_DEBUG_MODE
+//#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
@@ -79,7 +79,7 @@ esp_err_t SD_init(void){
 }
 
 esp_err_t SD_writeData(char dataAsString[], bool withNewLine){
-    FILE *f = fopen(MOUNT_POINT"/data.txt", "a");
+    FILE *f = fopen(SAMPLE_PATH"/data.txt", "a");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
@@ -137,3 +137,17 @@ esp_err_t SD_getInitialParams(Config_params_t *configParams) {
     DEBUG_PRINT_SD(TAG,"MQTT Port: %s",  configParams->mqtt_port);
     return ESP_OK;
 }
+
+esp_err_t SD_createInitialFiles(){
+    if ( access(SAMPLE_PATH, F_OK) == 0 ) {
+        DEBUG_PRINT_SD(TAG,"Sample directory Already Exist");
+    }
+    DEBUG_PRINT_SD(TAG,"Sample directory not found");
+    if (mkdir(SAMPLE_PATH, PERM_ADMIN) != 0) {
+        return ESP_FAIL;
+    }
+    DEBUG_PRINT_SD(TAG,"Sample directory created");
+
+    return ESP_OK;
+}
+

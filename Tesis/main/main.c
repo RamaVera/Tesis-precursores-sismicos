@@ -63,8 +63,9 @@ void giveAllSensorSemaphores();
 void app_main(void) {
 
     Config_params_t params;
-    defineLogLevels();
     status_t nextStatus = PRE_INIT;
+
+    defineLogLevels();
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
@@ -72,6 +73,7 @@ void app_main(void) {
             case PRE_INIT:{
                 if (SD_init() != ESP_OK) return;
                 SD_getInitialParams(&params);
+                if (SD_createInitialFiles() != ESP_OK) return;
                 nextStatus = INITIATING;
                 break;
             }
