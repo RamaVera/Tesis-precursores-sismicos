@@ -78,8 +78,11 @@ esp_err_t SD_init(void){
     return ESP_OK;
 }
 
-esp_err_t SD_writeData(char dataAsString[], bool withNewLine){
-    FILE *f = fopen(SAMPLE_PATH"/data.txt", "a");
+esp_err_t SD_writeData(char dataAsString[], bool withNewLine, char *pathToSave) {
+    char path[50];
+    sprintf(path,"%s/data.txt",pathToSave);
+    DEBUG_PRINT_SD(TAG,"%s",path);
+    FILE *f = fopen(path,"a");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
@@ -98,7 +101,7 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine){
 }
 
 
-esp_err_t SD_getInitialParams(Config_params_t *configParams) {
+esp_err_t SD_getConfigurationParams(config_params_t *configParams) {
     FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
     if (config_file == NULL) {
         ESP_LOGE(TAG, "Failed to open file for reading");
@@ -118,7 +121,11 @@ esp_err_t SD_getInitialParams(Config_params_t *configParams) {
             configParams->mqtt_ip_broker,
             configParams->mqtt_user,
             configParams->mqtt_password,
-            configParams->mqtt_port};
+            configParams->mqtt_port,
+            configParams->seed_year,
+            configParams->seed_month,
+            configParams->seed_day,
+            };
 
     const int num_fields = sizeof(fields)/sizeof(fields[0]);
 
@@ -135,18 +142,7 @@ esp_err_t SD_getInitialParams(Config_params_t *configParams) {
     DEBUG_PRINT_SD(TAG,"MQTT User: %s", configParams->mqtt_user);
     DEBUG_PRINT_SD(TAG,"MQTT Password: %s", configParams->mqtt_password);
     DEBUG_PRINT_SD(TAG,"MQTT Port: %s",  configParams->mqtt_port);
-    return ESP_OK;
-}
-
-esp_err_t SD_createInitialFiles(){
-    if ( access(SAMPLE_PATH, F_OK) == 0 ) {
-        DEBUG_PRINT_SD(TAG,"Sample directory Already Exist");
-    }
-    DEBUG_PRINT_SD(TAG,"Sample directory not found");
-    if (mkdir(SAMPLE_PATH, PERM_ADMIN) != 0) {
-        return ESP_FAIL;
-    }
-    DEBUG_PRINT_SD(TAG,"Sample directory created");
+    DEBUG_PRINT_SD(TAG,"Seed Datetime: %s/%s/%s",configParams->seed_year,configParams->seed_month,configParams->seed_day);
 
     return ESP_OK;
 }
