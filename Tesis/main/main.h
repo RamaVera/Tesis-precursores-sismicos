@@ -26,7 +26,7 @@
 #include "adc/adc.h"
 #include "data_packets/data_packet.h"
 #include "directory_manager/directory_manager.h"
-#include "rtc/rtc.h"
+#include "time_manager/time_manager.h"
 
 typedef enum status_t{
     START_CONFIG,

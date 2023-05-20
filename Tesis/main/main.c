@@ -84,11 +84,15 @@ void app_main(void) {
                         params.seed_year,
                         params.seed_month,
                         params.seed_day) != ESP_OK) return;
-                if ( RTC_setSeed(
-                        params.seed_year,
-                        params.seed_month,
-                        params.seed_day) != ESP_OK) return;
                 RTC_configureTimer(dir_enableFolderCreation);
+                if ( WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
+                if ( WIFI_connect() == ESP_OK ) {
+                    RTC_sincronizeTimeAndDate();
+                    if ( MQTT_init(params.mqtt_ip_broker,
+                                   params.mqtt_port,
+                                   params.mqtt_user,
+                                   params.mqtt_password) != ESP_OK) return;
+                }
 
                 nextStatus = INITIATING;
                 break;
@@ -98,13 +102,7 @@ void app_main(void) {
                 if ( ADC_Init() != ESP_OK) return;
                 if ( MPU9250_init() != ESP_OK) return;
                 if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
-                if ( WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
-                if ( WIFI_connect() == ESP_OK ) {
-                    if ( MQTT_init(params.mqtt_ip_broker,
-                                  params.mqtt_port,
-                                  params.mqtt_user,
-                                  params.mqtt_password) != ESP_OK) return;
-                }
+
                 if ( ESP32_initSemaphores() != ESP_OK) return;
                 if ( ESP32_initQueue() != ESP_OK) return;
                 nextStatus = WAITING_TO_INIT;
@@ -194,14 +192,14 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    DEBUG_PRINT_INTERRUPT_MAIN(">>mpu>>\n");
+    DEBUG_PRINT_INTERRUPT_MAIN(">>>\n");
 }
 
 void IRAM_ATTR dir_enableFolderCreation(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_dirCreation, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    DEBUG_PRINT_INTERRUPT_MAIN(">>dir>>\n");
+    DEBUG_PRINT_INTERRUPT_MAIN("<<<\n");
 }
 
 //------------------------------ TASKS -----------------------------------------

@@ -9,6 +9,6 @@ idf_component_register(
                 "sd_card/sd_card.c"
                 "mqtt/mqtt.c"
                 "data_packets/data_packet.c"
-                "rtc/rtc.c"
+                "time_manager/time_manager.c"
                 "directory_manager/directory_manager.c"
                 )
