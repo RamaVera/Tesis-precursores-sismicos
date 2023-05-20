@@ -1,8 +1,7 @@
-/** \file	sd_card.h
- *  \brief	Contiene las funciones de manejo e inicializacion de la tarjeta SD
- *  Autor: Ramiro Alonso
+/** \file	main.h
+ *  \brief	Contiene las funciones de manejo e inicializacion
+ *  Autor: Ramiro Vera
  *  Versión: 1
- *	Contiene las funciones de manejo e inicializacion de la tarjeta SD
  */
 
 #ifndef MAIN_H_
@@ -26,21 +25,23 @@
 #include "mqtt/mqtt.h"
 #include "adc/adc.h"
 #include "data_packets/data_packet.h"
+#include "directory_manager/directory_manager.h"
+#include "rtc/rtc.h"
 
 typedef enum status_t{
-    PRE_INIT,
+    START_CONFIG,
     INITIATING,
     WAITING_TO_INIT,
-    SETTING_UP,
+    CALIBRATION,
     INIT_SAMPLING,
     DONE,
     ERROR,
 }status_t;
 
-const char * statusAsString[] = { "PRE_INIT",
+const char * statusAsString[] = { "START_CONFIG",
                          "INITIATING",
                          "WAITING_TO_INIT",
-                         "SETTING_UP",
+                         "CALIBRATION",
                          "INIT_SAMPLING",
                          "DONE",
                          "ERROR"};

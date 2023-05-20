@@ -6,6 +6,7 @@
  */
 #include "main.h"
 
+
 #define DEBUG
 #ifdef DEBUG
 #define DEBUG_PRINT_MAIN(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
@@ -28,12 +29,14 @@ TaskHandle_t MPU_CALIB_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
 TaskHandle_t ADC_ISR = NULL;
 TaskHandle_t WIFI_PUBLISH_ISR = NULL;
+TaskHandle_t DIR_ISR = NULL;
 
 QueueHandle_t SDDataQueue;
 QueueHandle_t ADCDataQueue;
 QueueHandle_t MPUDataQueue;
 QueueHandle_t MQTTDataQueue;
 
+SemaphoreHandle_t xSemaphore_dirCreation = NULL;
 SemaphoreHandle_t xSemaphore_newDataOnMPU = NULL;
 SemaphoreHandle_t xSemaphore_MPUMutexQueue = NULL;
 SemaphoreHandle_t xSemaphore_ADCMutexQueue = NULL;
@@ -45,6 +48,7 @@ bool calibrationDone = false;
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
 void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
+void IRAM_ATTR dir_enableFolderCreation(void* pvParameters);
 
 void IRAM_ATTR adc_readingTask(void *pvParameters);
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
@@ -52,6 +56,8 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters);
 void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter);
 void IRAM_ATTR sd_savingTask(void *pvParameters);
 void IRAM_ATTR wifi_publishDataTask(void *pvParameters);
+void IRAM_ATTR dir_folderCreation(void *pvParameters);
+
 
 
 void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
@@ -60,37 +66,47 @@ void takeAllSensorSemaphores();
 
 void giveAllSensorSemaphores();
 
+
 void app_main(void) {
 
-    Config_params_t params;
-    status_t nextStatus = PRE_INIT;
+    config_params_t params;
+    status_t nextStatus = START_CONFIG;
 
     defineLogLevels();
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
         switch (nextStatus) {
-            case PRE_INIT:{
-                if (SD_init() != ESP_OK) return;
-                SD_getInitialParams(&params);
-                if (SD_createInitialFiles() != ESP_OK) return;
+            case START_CONFIG:{
+                if ( SD_init() != ESP_OK) return;
+                if ( SD_getConfigurationParams(&params) != ESP_OK) return;
+                if ( DIR_createInitialFiles(
+                        params.seed_year,
+                        params.seed_month,
+                        params.seed_day) != ESP_OK) return;
+                if ( RTC_setSeed(
+                        params.seed_year,
+                        params.seed_month,
+                        params.seed_day) != ESP_OK) return;
+                RTC_configureTimer(dir_enableFolderCreation);
+
                 nextStatus = INITIATING;
                 break;
             }
             case INITIATING: {
-                if (Button_init() != ESP_OK) return;
-                if (ADC_Init() != ESP_OK) return;
-                if (MPU9250_init() != ESP_OK) return;
-                if (MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
-                if (WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
-                if (WIFI_connect() == ESP_OK ) {
-                    if (MQTT_init(params.mqtt_ip_broker,
+                if ( Button_init() != ESP_OK) return;
+                if ( ADC_Init() != ESP_OK) return;
+                if ( MPU9250_init() != ESP_OK) return;
+                if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
+                if ( WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
+                if ( WIFI_connect() == ESP_OK ) {
+                    if ( MQTT_init(params.mqtt_ip_broker,
                                   params.mqtt_port,
                                   params.mqtt_user,
                                   params.mqtt_password) != ESP_OK) return;
                 }
-                if (ESP32_initSemaphores() != ESP_OK) return;
-                if (ESP32_initQueue() != ESP_OK) return;
+                if ( ESP32_initSemaphores() != ESP_OK) return;
+                if ( ESP32_initQueue() != ESP_OK) return;
                 nextStatus = WAITING_TO_INIT;
                 break;
             }
@@ -102,11 +118,11 @@ void app_main(void) {
                 }
                 if (Button_isPressed()) {
                     WDT_enableOnAllCores();
-                    nextStatus = SETTING_UP;
+                    nextStatus = CALIBRATION;
                 }
                 break;
             }
-            case SETTING_UP: {
+            case CALIBRATION: {
                 static bool creatingTask = true;
                 if (creatingTask) {
                     creatingTask = false;
@@ -136,8 +152,11 @@ void app_main(void) {
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
                 xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
                 xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, NULL,0);
+                xTaskCreatePinnedToCore(dir_folderCreation, "dir_folderCreation", 1024 * 16, NULL, tskIDLE_PRIORITY + 5, &DIR_ISR, 0);
+
                 //xTaskCreatePinnedToCore(wifi_publishDataTask, "wifi_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &WIFI_PUBLISH_ISR, 1);
                 MPU9250_enableInterrupt(true);
+                RTC_startTimer();
                 nextStatus = DONE;
                 break;
             }
@@ -175,7 +194,14 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    DEBUG_PRINT_INTERRUPT_MAIN(">>>>> \n");
+    DEBUG_PRINT_INTERRUPT_MAIN(">>mpu>>\n");
+}
+
+void IRAM_ATTR dir_enableFolderCreation(void* pvParameters){
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(xSemaphore_dirCreation, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    DEBUG_PRINT_INTERRUPT_MAIN(">>dir>>\n");
 }
 
 //------------------------------ TASKS -----------------------------------------
@@ -268,10 +294,12 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     SD_data_t sdData;
     QueuePacket_t aReceivedPacket;
     char data[200];
+    char pathToSave[50];
     bool newLine = true;
 
     sprintf(data, "Ax\t\tAy\t\tAz\t\tADC\t\t");
-    SD_writeData(data, newLine);
+    DIR_getPathToWrite(pathToSave);
+    SD_writeData(data, newLine, pathToSave);
 
     while (1) {
         vTaskDelay(1);
@@ -294,7 +322,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                                 sdData.adcData.data);
                     }
                 }
-                SD_writeData(data, newLine);
+                SD_writeData(data, newLine, pathToSave);
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
             }
         }
@@ -366,6 +394,20 @@ void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
     }
 }
 
+void IRAM_ATTR dir_folderCreation(void *pvParameters){
+    ESP_LOGI(TAG, "dir creation task init");
+    WDT_addTask(DIR_ISR);
+    while (1) {
+        vTaskDelay(1);
+        if (xSemaphoreTake(xSemaphore_dirCreation, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+        RTC_printTimeNow();
+        WDT_reset(DIR_ISR);
+    }
+}
+
+
 //------------------------------ UTILS -----------------------------------------
 
 void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue) {
@@ -427,7 +469,9 @@ esp_err_t ESP32_initQueue() {
 }
 
 esp_err_t ESP32_initSemaphores() {
+    xSemaphore_dirCreation = xSemaphoreCreateBinary(); if( xSemaphore_dirCreation == NULL )   return ESP_FAIL;
     xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
+
     xSemaphore_MPUMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPUMutexQueue == NULL )  return ESP_FAIL;
     xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
     xSemaphore_ADCMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_ADCMutexQueue == NULL )  return ESP_FAIL;
