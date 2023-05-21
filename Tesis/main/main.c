@@ -36,7 +36,6 @@ QueueHandle_t ADCDataQueue;
 QueueHandle_t MPUDataQueue;
 QueueHandle_t MQTTDataQueue;
 
-SemaphoreHandle_t xSemaphore_dirCreation = NULL;
 SemaphoreHandle_t xSemaphore_newDataOnMPU = NULL;
 SemaphoreHandle_t xSemaphore_MPUMutexQueue = NULL;
 SemaphoreHandle_t xSemaphore_ADCMutexQueue = NULL;
@@ -48,7 +47,7 @@ bool calibrationDone = false;
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
 void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
-void IRAM_ATTR dir_enableFolderCreation(void* pvParameters);
+void IRAM_ATTR time_syncInternalTimer(void* pvParameters);
 
 void IRAM_ATTR adc_readingTask(void *pvParameters);
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
@@ -93,12 +92,12 @@ void app_main(void) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
                         if ( TIME_synchronizeTimeAndDate() != ESP_OK) return;
                         TIME_getInfoTime(&timeInfo);
+                        RTC_configureTimer(time_syncInternalTimer);
                     }
                 }
+                TIME_printTimeAndDate(&timeInfo);
 
                 if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday) != ESP_OK) return;
-                RTC_configureTimer(dir_enableFolderCreation);
-
                 nextStatus = INITIATING;
                 break;
             }
@@ -196,9 +195,9 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     DEBUG_PRINT_INTERRUPT_MAIN(">>>\n");
 }
 
-void IRAM_ATTR dir_enableFolderCreation(void* pvParameters){
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(xSemaphore_dirCreation, &xHigherPriorityTaskWoken);
+void IRAM_ATTR time_syncInternalTimer(void* pvParameters){
+    BaseType_t xHigherPriorityTaskWoken = pdTRUE;
+    xTaskResumeFromISR(TIME_ISR);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     DEBUG_PRINT_INTERRUPT_MAIN("<<<\n");
 }
@@ -314,9 +313,10 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                             printPattern = (char *) &SD_LINE_PATTERN;
                         }
 
-                        if (sdData.hour == 0 && sdData.min == 0 && sdData.seconds <= 1 ){
+                        if (sdData.hour == 16 && sdData.min == 34 && sdData.seconds == 0 ){
                             TIME_getInfoTime(&timeInfo);
-                            if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday) != ESP_OK) return;
+                            TIME_printTimeNow();
+                            if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday + 1) != ESP_OK) return;
 
                         }
 
@@ -402,10 +402,7 @@ void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
 void IRAM_ATTR time_internalTimeSync(void *pvParameters){
     ESP_LOGI(TAG, "Time sync task init");
     while (1) {
-        vTaskDelay(1000);
-        if (xSemaphoreTake(xSemaphore_dirCreation, portMAX_DELAY) != pdTRUE) {
-            continue;
-        }
+        vTaskSuspend(TIME_ISR);
         TIME_synchronizeTimeAndDate();
         TIME_printTimeNow();
     }
@@ -475,7 +472,6 @@ esp_err_t ESP32_initQueue() {
 }
 
 esp_err_t ESP32_initSemaphores() {
-    xSemaphore_dirCreation = xSemaphoreCreateBinary(); if( xSemaphore_dirCreation == NULL )   return ESP_FAIL;
     xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
 
     xSemaphore_MPUMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPUMutexQueue == NULL )  return ESP_FAIL;
