@@ -7,6 +7,7 @@
 #include "main.h"
 
 
+
 #define DEBUG
 #ifdef DEBUG
 #define DEBUG_PRINT_MAIN(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
@@ -91,8 +92,11 @@ void app_main(void) {
                     if ( WIFI_connect() == ESP_OK ) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
                         if ( TIME_synchronizeTimeAndDate() != ESP_OK) return;
+                        if ( RTC_configureTimer(time_syncInternalTimer) != ESP_OK) return;
+
                         TIME_getInfoTime(&timeInfo);
-                        RTC_configureTimer(time_syncInternalTimer);
+                        TIME_updateParams(timeInfo,params.init_year, params.init_month, params.init_day);
+                        SD_saveLastConfigParams(&params);
                     }
                 }
                 TIME_printTimeAndDate(&timeInfo);
@@ -310,7 +314,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                         sdData = getSDDataFromPacket(aReceivedPacket);
                         DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
 
-                        if (sdData.hour == 19 && sdData.min == 52 && sdData.seconds == 0){
+                        if (sdData.hour == 0 && sdData.min == 0 && sdData.seconds == 0){
                             if( !notifyDirChange ){
                                 notifyDirChange = true;
 
@@ -320,7 +324,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                                 }
 
                                 TIME_getInfoTime(&timeInfo);
-                                DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday + 1);
+                                DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
                                 DIR_getPathToWrite(pathToSave);
                                 SD_writeHeaderToSampleFile(pathToSave);
                             }
