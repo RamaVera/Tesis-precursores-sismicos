@@ -4,22 +4,79 @@
 
 #include "time_manager.h"
 
-static const char *TAG = "TIME "; // Para los mensajes de LOG
+static const char *TAG = "TIME ";
 
 TimerHandle_t timerHandle;
 
-void RTC_printTimeNow(){
-    struct tm timeinfo;
+esp_err_t TIME_synchronizeTimeAndDate() {
+    ESP_LOGI(TAG, "Getting time from NTP server...");
 
-    time_t now = 0;
-    time(&now);
-    localtime_r(&now, &timeinfo);
+    // Seteo timezone de Argentina GMT-3
+    setenv("TZ", "<-03>3", 1);
+    tzset();
 
-    char strftime_buf[64];
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "Hora actual: %s", strftime_buf);
+    // Configuro el server NTP para sincronizar la hora
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_init();
+
+    // Esperar a que se sincronice la hora
+    uint16_t retries;
+    for ( retries = 0 ; (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retries < MAX_RETRIES_FOR_SYNC_TIME) ; retries++ ){
+        ESP_LOGI(TAG, "Synchronizing time...");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    sntp_stop();
+
+    if (retries >= MAX_RETRIES_FOR_SYNC_TIME) {
+        ESP_LOGE(TAG, "Max retries reached");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
+timeInfo_t TIME_getInfoTime(timeInfo_t *timeinfo) {
+    time_t now = 0;
+    time(&now);
+    localtime_r(&now, timeinfo);
+    return (*timeinfo);
+}
+
+void TIME_printTimeNow(void) {
+    timeInfo_t timeinfo;
+    TIME_getInfoTime(&timeinfo);
+    TIME_printTimeAndDate(&timeinfo);
+}
+
+esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo) {
+    char * endptr;
+
+    int year = strtol(yearAsString, &endptr, 10);
+    if (*endptr != '\0') {
+        ESP_LOGE(TAG,"Error Getting MQTT port");
+        return ESP_FAIL;
+    }
+    int month = strtol(monthAsString, &endptr, 10);
+    if (*endptr != '\0') {
+        ESP_LOGE(TAG,"Error Getting MQTT port");
+        return ESP_FAIL;
+    }
+    int day = strtol(dayAsString, &endptr, 10);
+    if (*endptr != '\0') {
+        ESP_LOGE(TAG,"Error Getting MQTT port");
+        return ESP_FAIL;
+    }
+
+    memset(timeInfo, 0, sizeof(*timeInfo));
+    timeInfo->tm_year = year - 1900;
+    timeInfo->tm_mon = month - 1;
+    timeInfo->tm_mday = day;
+    return  ESP_OK;
+}
+
+void TIME_printTimeAndDate(timeInfo_t *timeinfo) {
+    ESP_LOGI(TAG, "Actual Time is: %s", asctime(timeinfo));
+}
 
 esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
     timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(TIMER_PERIOD_MS), pdTRUE, NULL, interruptToCallEveryTimelapse);
@@ -37,44 +94,4 @@ esp_err_t RTC_startTimer(void) {
 }
 
 
-void RTC_sincronizeTimeAndDate(void)
-{
-    ESP_LOGI(TAG, "Obteniendo la hora del servidor NTP...");
-    setenv("TZ", "GMT-3", 1);
-    tzset();
-
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_init();
-
-    // Espera hasta que se obtenga la hora actual
-    time_t now = 0;
-    struct tm timeinfo = {0};
-    int retry = 0;
-    const int retry_count = 10;
-    while ((timeinfo.tm_year + 1900) < 2020 && ++retry < retry_count) {
-        ESP_LOGI(TAG, "Esperando la hora actual...");
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
-
-    // Mostrar la hora obtenida
-    if (retry < retry_count) {
-        setenv("TZ", "GMT-3", 1);
-        tzset();
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        // Configurar el RTC interno con la hora obtenida
-        struct timeval tv;
-        tv.tv_sec = now;
-        tv.tv_usec = 0;
-
-        settimeofday(&tv, NULL);
-        ESP_LOGI(TAG, "Hora actual: %s", asctime(&timeinfo));
-    } else {
-        ESP_LOGE(TAG, "Error al obtener la hora del servidor NTP");
-    }
-    sntp_stop();
-}
 
