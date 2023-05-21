@@ -26,9 +26,9 @@ typedef struct config_params_t{
     char mqtt_user[MAX_LENGTH];
     char mqtt_password[MAX_LENGTH];
     char mqtt_port[MAX_LENGTH];
-    char seed_year[MIN_LENGTH];
-    char seed_month[MIN_LENGTH];
-    char seed_day[MIN_LENGTH];
+    char init_year[MIN_LENGTH];
+    char init_month[MIN_LENGTH];
+    char init_day[MIN_LENGTH];
 }config_params_t;
 
 /*****************************************************************************
@@ -36,8 +36,9 @@ typedef struct config_params_t{
 *****************************************************************************/
 
 esp_err_t SD_init(void);
-esp_err_t SD_writeData(char dataAsString[], bool withNewLine, char *pathToSave);
-esp_err_t SD_getConfigurationParams(config_params_t *configParams);
+esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave);
+esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams);
+void SD_writeHeaderToSampleFile(char *pathToSave);
 
 
 /*****************************************************************************

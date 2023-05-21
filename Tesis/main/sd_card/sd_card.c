@@ -78,7 +78,7 @@ esp_err_t SD_init(void){
     return ESP_OK;
 }
 
-esp_err_t SD_writeData(char dataAsString[], bool withNewLine, char *pathToSave) {
+esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave) {
     char path[50];
     sprintf(path,"%s/data.txt",pathToSave);
     DEBUG_PRINT_SD(TAG,"%s",path);
@@ -101,7 +101,8 @@ esp_err_t SD_writeData(char dataAsString[], bool withNewLine, char *pathToSave) 
 }
 
 
-esp_err_t SD_getConfigurationParams(config_params_t *configParams) {
+esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams;) {
+
     FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
     if (config_file == NULL) {
         ESP_LOGE(TAG, "Failed to open file for reading");
@@ -122,9 +123,9 @@ esp_err_t SD_getConfigurationParams(config_params_t *configParams) {
             configParams->mqtt_user,
             configParams->mqtt_password,
             configParams->mqtt_port,
-            configParams->seed_year,
-            configParams->seed_month,
-            configParams->seed_day,
+            configParams->init_year,
+            configParams->init_month,
+            configParams->init_day,
             };
 
     const int num_fields = sizeof(fields)/sizeof(fields[0]);
@@ -142,8 +143,11 @@ esp_err_t SD_getConfigurationParams(config_params_t *configParams) {
     DEBUG_PRINT_SD(TAG,"MQTT User: %s", configParams->mqtt_user);
     DEBUG_PRINT_SD(TAG,"MQTT Password: %s", configParams->mqtt_password);
     DEBUG_PRINT_SD(TAG,"MQTT Port: %s",  configParams->mqtt_port);
-    DEBUG_PRINT_SD(TAG,"Seed Datetime: %s/%s/%s",configParams->seed_year,configParams->seed_month,configParams->seed_day);
+    DEBUG_PRINT_SD(TAG, "Seed Datetime: %s/%s/%s", configParams->init_year, configParams->init_month, configParams->init_day);
 
     return ESP_OK;
 }
 
+void SD_writeHeaderToSampleFile(char *pathToSave) {
+    SD_writeDataOnSampleFile("Ax\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
+}
