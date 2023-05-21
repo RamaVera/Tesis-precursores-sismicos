@@ -25,11 +25,12 @@
 #define WIFI_FAIL_BIT      BIT1
 #define EXAMPLE_ESP_MAXIMUM_RETRY  10
 
-#define MAX_STRING_WIFI_PARAMETER 32
+#define MAX_SSID_WIFI_PARAMETER 32
+#define MAX_PASSWORD_WIFI_PARAMETER 64
 
 typedef struct wifiParams {
-    char ssid[MAX_STRING_WIFI_PARAMETER];
-    char password[MAX_STRING_WIFI_PARAMETER]
+    char ssid[MAX_SSID_WIFI_PARAMETER];
+    char password[MAX_PASSWORD_WIFI_PARAMETER];
 } wifiParams_t;
 
 esp_err_t WIFI_init(wifiParams_t wifiParams);
