@@ -21,9 +21,9 @@
 #define QUEUE_LENGTH 50
 #define QUEUE_ITEM_SIZE sizeof(QueuePacket_t)
 
-const char SD_LINE_PATTERN[30] = "%02f\t%02f\t%02f\t%d";
-const char SD_LINE_PATTERN_WITH_NEW_LINE[30] ="%02f\t%02f\t%02f\t%d\n";
+const char SD_LINE_PATTERN_WITH_NEW_LINE[] ="%02f\t%02f\t%02f\t%d\n";
 
+TaskHandle_t FUSION_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
 TaskHandle_t MPU_CALIB_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
@@ -58,7 +58,7 @@ void IRAM_ATTR wifi_publishDataTask(void *pvParameters);
 void IRAM_ATTR time_internalTimeSync(void *pvParameters);
 
 
-void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
+void correlateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
 
 void takeAllSensorSemaphores();
 
@@ -152,7 +152,7 @@ void app_main(void) {
                 xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
                 xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
-                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, NULL,0);
+                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
                 xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
 
                 //xTaskCreatePinnedToCore(wifi_publishDataTask, "wifi_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &WIFI_PUBLISH_ISR, 1);
@@ -289,10 +289,11 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     ESP_LOGI(TAG,"SD task init");
     WDT_addTask(SD_ISR);
 
+    bool notifyDirChange = false;
     timeInfo_t timeInfo;
     SD_data_t sdData;
     QueuePacket_t aReceivedPacket;
-    char data[100];
+    char data[50];
     char pathToSave[MAX_SAMPLE_PATH_LENGTH];
 
     DIR_getPathToWrite(pathToSave);
@@ -300,34 +301,39 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
     while (1) {
         vTaskDelay(1);
+        memset(data,0,sizeof(data));
+
         if(uxQueueMessagesWaiting(SDDataQueue) > 0 ){
             if(xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
-                while(uxQueueMessagesWaiting(SDDataQueue) != 0){
-                    if (xQueueReceive(SDDataQueue, &aReceivedPacket, 0) == pdTRUE){
+
+                while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
                         sdData = getSDDataFromPacket(aReceivedPacket);
                         DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
-                        char * printPattern;
-                        if (uxQueueMessagesWaiting(SDDataQueue)>0){
-                            printPattern = (char *) &SD_LINE_PATTERN_WITH_NEW_LINE;
-                        }else{
-                            printPattern = (char *) &SD_LINE_PATTERN;
+
+                        if (sdData.hour == 19 && sdData.min == 52 && sdData.seconds == 0){
+                            if( !notifyDirChange ){
+                                notifyDirChange = true;
+
+                                if( strlen(data) != 0) {
+                                    SD_writeDataOnSampleFile(data, false, pathToSave);
+                                    memset(data,0,sizeof(data));
+                                }
+
+                                TIME_getInfoTime(&timeInfo);
+                                DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday + 1);
+                                DIR_getPathToWrite(pathToSave);
+                                SD_writeHeaderToSampleFile(pathToSave);
+                            }
+                        } else {
+                            notifyDirChange = false;
                         }
-
-                        if (sdData.hour == 16 && sdData.min == 34 && sdData.seconds == 0 ){
-                            TIME_getInfoTime(&timeInfo);
-                            TIME_printTimeNow();
-                            if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday + 1) != ESP_OK) return;
-
-                        }
-
-                        sprintf(data, printPattern,
-                                sdData.mpuData.Ax,
-                                sdData.mpuData.Ay,
-                                sdData.mpuData.Az,
-                                sdData.adcData.data);
-                    }
+                         sprintf(data, SD_LINE_PATTERN_WITH_NEW_LINE,
+                            sdData.mpuData.Ax,
+                            sdData.mpuData.Ay,
+                            sdData.mpuData.Az,
+                            sdData.adcData.data);
                 }
-                SD_writeDataOnSampleFile(data, true, pathToSave);
+                SD_writeDataOnSampleFile(data, false, pathToSave);
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
             }
         }
@@ -387,15 +393,16 @@ void IRAM_ATTR adc_readingTask(void *pvParameters) {
 }
 
 void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
-
+    WDT_addTask(FUSION_ISR);
     while (1) {
         vTaskDelay(1);
         takeAllSensorSemaphores();
         UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
         UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
         DEBUG_PRINT_MAIN(TAG,"Fusion data Mpu:%d y ADC:%d",lenOfMPUQueue,lenOfADCQueue);
-        CorrelateDataAndSendToSDQueue(lenOfMPUQueue, lenOfADCQueue);
+        correlateDataAndSendToSDQueue(lenOfMPUQueue, lenOfADCQueue);
         giveAllSensorSemaphores();
+        WDT_reset(FUSION_ISR);
     }
 }
 
@@ -411,7 +418,7 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters){
 
 //------------------------------ UTILS -----------------------------------------
 
-void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue) {
+void correlateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue) {
     QueueHandle_t longestQueue,shorterQueue;
     if (lenOfMPUQueue > lenOfADCQueue){
         longestQueue = MPUDataQueue;
