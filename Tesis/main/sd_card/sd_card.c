@@ -101,7 +101,7 @@ esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *
 }
 
 
-esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams;) {
+esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams) {
 
     FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
     if (config_file == NULL) {
