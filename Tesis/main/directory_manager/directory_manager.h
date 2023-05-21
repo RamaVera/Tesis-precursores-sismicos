@@ -20,7 +20,9 @@
 
 #define SAMPLE_PATH MOUNT_POINT"/samples"
 
-esp_err_t DIR_createInitialFiles(char *yearSeed, char *monthSeed, char *daySeed);
+#define MAX_SAMPLE_PATH_LENGTH 20
+
+esp_err_t DIR_setMainSampleDirectory(int year, int month, int day);
 esp_err_t DIR_CreateDirectory(char *directoryPath);
 esp_err_t DIR_getPathToWrite(char * path);
 

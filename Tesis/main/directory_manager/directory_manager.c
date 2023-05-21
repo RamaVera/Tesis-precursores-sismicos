@@ -11,27 +11,21 @@
 #define DEBUG_PRINT_DIR(tag, fmt, ...) do {} while (0)
 #endif
 
-char dayDirectoryPath[50];
+char sampleDirectoryPath[MAX_SAMPLE_PATH_LENGTH];
 
 static const char *TAG = "DIRECTORY "; // Para los mensajes de LOG
 
-esp_err_t DIR_createInitialFiles(char *yearSeed, char *monthSeed, char *daySeed) {
-    char yearDirectoryPath[30];
-    char monthDirectoryPath[40];
+int yearPart,monthPart,dayPart;
 
-    sprintf(yearDirectoryPath, "%s/%s", SAMPLE_PATH, yearSeed);
-    if( DIR_CreateDirectory(yearDirectoryPath) != ESP_OK ){
-       return ESP_FAIL;
-    }
-    sprintf(monthDirectoryPath,"%s/%s",yearDirectoryPath,monthSeed);
-    if( DIR_CreateDirectory(monthDirectoryPath) != ESP_OK ){
+esp_err_t DIR_setMainSampleDirectory(int year, int month, int day) {
+    
+    sprintf(sampleDirectoryPath, "%s/%d-%d-%d",SAMPLE_PATH, year, month, day);
+    if(DIR_CreateDirectory(sampleDirectoryPath) != ESP_OK ){
         return ESP_FAIL;
     }
-
-    sprintf(dayDirectoryPath,"%s/%s",monthDirectoryPath,daySeed);
-    if( DIR_CreateDirectory(dayDirectoryPath) != ESP_OK ){
-        return ESP_FAIL;
-    }
+    yearPart = year;
+    monthPart = month;
+    dayPart = day;
 
     return ESP_OK;
 }
@@ -51,8 +45,6 @@ esp_err_t DIR_CreateDirectory(char *directoryPath) {
 }
 
 esp_err_t DIR_getPathToWrite(char * path){
-    memcpy(path,dayDirectoryPath, sizeof(dayDirectoryPath));
+    memcpy(path, sampleDirectoryPath, sizeof(sampleDirectoryPath));
     return ESP_OK;
 }
-
-
