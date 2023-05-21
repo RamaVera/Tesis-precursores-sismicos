@@ -29,7 +29,7 @@ TaskHandle_t MPU_CALIB_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
 TaskHandle_t ADC_ISR = NULL;
 TaskHandle_t WIFI_PUBLISH_ISR = NULL;
-TaskHandle_t DIR_ISR = NULL;
+TaskHandle_t TIME_ISR = NULL;
 
 QueueHandle_t SDDataQueue;
 QueueHandle_t ADCDataQueue;
@@ -56,8 +56,7 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters);
 void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter);
 void IRAM_ATTR sd_savingTask(void *pvParameters);
 void IRAM_ATTR wifi_publishDataTask(void *pvParameters);
-void IRAM_ATTR dir_folderCreation(void *pvParameters);
-
+void IRAM_ATTR time_internalTimeSync(void *pvParameters);
 
 
 void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
@@ -69,7 +68,6 @@ void giveAllSensorSemaphores();
 
 void app_main(void) {
 
-    config_params_t params;
     status_t nextStatus = START_CONFIG;
 
     defineLogLevels();
@@ -78,21 +76,28 @@ void app_main(void) {
 
         switch (nextStatus) {
             case START_CONFIG:{
+                config_params_t params;
+                wifiParams_t wifiParams;
+                mqttParams_t mqttParams;
+                timeInfo_t timeInfo;
+
                 if ( SD_init() != ESP_OK) return;
-                if ( SD_getConfigurationParams(&params) != ESP_OK) return;
-                if ( DIR_createInitialFiles(
-                        params.seed_year,
-                        params.seed_month,
-                        params.seed_day) != ESP_OK) return;
-                RTC_configureTimer(dir_enableFolderCreation);
-                if ( WIFI_init(params.wifi_ssid, params.wifi_password) != ESP_OK) return;
-                if ( WIFI_connect() == ESP_OK ) {
-                    RTC_sincronizeTimeAndDate();
-                    if ( MQTT_init(params.mqtt_ip_broker,
-                                   params.mqtt_port,
-                                   params.mqtt_user,
-                                   params.mqtt_password) != ESP_OK) return;
+                if ( SD_getDefaultConfigurationParams(&params) != ESP_OK) return;
+
+                if ( WIFI_parseParams(params.wifi_ssid, params.wifi_password, &wifiParams) != ESP_OK) return;
+                if ( MQTT_parseParams(params.mqtt_ip_broker,params.mqtt_port,params.mqtt_user,params.mqtt_password,&mqttParams) != ESP_OK) return;
+                if ( TIME_parseParams(params.init_year, params.init_month, params.init_day, &timeInfo) != ESP_OK) return;
+
+                if ( WIFI_init(wifiParams) == ESP_OK) {
+                    if ( WIFI_connect() == ESP_OK ) {
+                        if ( MQTT_init(mqttParams) != ESP_OK) return;
+                        if ( TIME_synchronizeTimeAndDate() != ESP_OK) return;
+                        TIME_getInfoTime(&timeInfo);
+                    }
                 }
+
+                if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday) != ESP_OK) return;
+                RTC_configureTimer(dir_enableFolderCreation);
 
                 nextStatus = INITIATING;
                 break;
@@ -129,8 +134,7 @@ void app_main(void) {
                     MPU9250_enableInterrupt(true);
                 }
 
-                bool firstTimeForCalibration = true;
-
+                static bool firstTimeForCalibration = true;
                 if( calibrationDone && firstTimeForCalibration) {
                     firstTimeForCalibration = false;
                     MPU9250_enableInterrupt(false);
@@ -150,7 +154,7 @@ void app_main(void) {
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
                 xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
                 xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, NULL,0);
-                xTaskCreatePinnedToCore(dir_folderCreation, "dir_folderCreation", 1024 * 16, NULL, tskIDLE_PRIORITY + 5, &DIR_ISR, 0);
+                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
 
                 //xTaskCreatePinnedToCore(wifi_publishDataTask, "wifi_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &WIFI_PUBLISH_ISR, 1);
                 MPU9250_enableInterrupt(true);
@@ -158,9 +162,6 @@ void app_main(void) {
                 nextStatus = DONE;
                 break;
             }
-
-            case DONE:
-            case ERROR:
             default:
                  break;
         }
@@ -206,7 +207,7 @@ void IRAM_ATTR dir_enableFolderCreation(void* pvParameters){
 
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
 
-    ESP_LOGI(TAG, "Mpu task init");
+    ESP_LOGI(TAG, "MPU task init");
     WDT_addTask(MPU_ISR);
     while (1) {
         vTaskDelay(1);
@@ -289,15 +290,14 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     ESP_LOGI(TAG,"SD task init");
     WDT_addTask(SD_ISR);
 
+    timeInfo_t timeInfo;
     SD_data_t sdData;
     QueuePacket_t aReceivedPacket;
-    char data[200];
-    char pathToSave[50];
-    bool newLine = true;
+    char data[100];
+    char pathToSave[MAX_SAMPLE_PATH_LENGTH];
 
-    sprintf(data, "Ax\t\tAy\t\tAz\t\tADC\t\t");
     DIR_getPathToWrite(pathToSave);
-    SD_writeData(data, newLine, pathToSave);
+    SD_writeHeaderToSampleFile(pathToSave);
 
     while (1) {
         vTaskDelay(1);
@@ -313,6 +313,13 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                         }else{
                             printPattern = (char *) &SD_LINE_PATTERN;
                         }
+
+                        if (sdData.hour == 0 && sdData.min == 0 && sdData.seconds <= 1 ){
+                            TIME_getInfoTime(&timeInfo);
+                            if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday) != ESP_OK) return;
+
+                        }
+
                         sprintf(data, printPattern,
                                 sdData.mpuData.Ax,
                                 sdData.mpuData.Ay,
@@ -320,7 +327,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                                 sdData.adcData.data);
                     }
                 }
-                SD_writeData(data, newLine, pathToSave);
+                SD_writeDataOnSampleFile(data, true, pathToSave);
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
             }
         }
@@ -329,7 +336,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 }
 
 void IRAM_ATTR wifi_publishDataTask(void *pvParameters){
-    ESP_LOGI(TAG,"Wifi publish task init");
+    ESP_LOGI(TAG,"WIFI publish task init");
     WDT_addTask(WIFI_PUBLISH_ISR);
     MPU9250_t item;
 
@@ -358,7 +365,7 @@ void IRAM_ATTR wifi_publishDataTask(void *pvParameters){
 
 void IRAM_ATTR adc_readingTask(void *pvParameters) {
 
-    ESP_LOGI(TAG, "adc task init");
+    ESP_LOGI(TAG, "ADC task init");
     WDT_addTask(ADC_ISR);
 
     while (1) {
@@ -392,16 +399,15 @@ void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
     }
 }
 
-void IRAM_ATTR dir_folderCreation(void *pvParameters){
-    ESP_LOGI(TAG, "dir creation task init");
-    WDT_addTask(DIR_ISR);
+void IRAM_ATTR time_internalTimeSync(void *pvParameters){
+    ESP_LOGI(TAG, "Time sync task init");
     while (1) {
-        vTaskDelay(1);
+        vTaskDelay(1000);
         if (xSemaphoreTake(xSemaphore_dirCreation, portMAX_DELAY) != pdTRUE) {
             continue;
         }
-        RTC_printTimeNow();
-        WDT_reset(DIR_ISR);
+        TIME_synchronizeTimeAndDate();
+        TIME_printTimeNow();
     }
 }
 
@@ -452,8 +458,10 @@ void CorrelateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfA
             }
 
         }
+        timeInfo_t timeinfo;
+        TIME_getInfoTime( &timeinfo);
 
-        buildDataPacketForSD(mpuData,adcData,&resultPacket);
+        buildDataPacketForSD(mpuData, adcData, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, &resultPacket);
         xQueueSend(SDDataQueue, &resultPacket, portMAX_DELAY);
     }
 }
