@@ -63,7 +63,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
         }
 }
 
-esp_err_t WIFI_init(char ssid[32], char password[32]) {
+esp_err_t WIFI_init(wifiParams_t wifiParams) {
 
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -95,8 +95,8 @@ esp_err_t WIFI_init(char ssid[32], char password[32]) {
                                                             NULL,
                                                             &instance_got_ip));
         wifi_config_t wifi_config = {0};
-        memcpy(wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
-        memcpy(wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
+        memcpy(wifi_config.sta.ssid, wifiParams.ssid, sizeof(wifi_config.sta.ssid));
+        memcpy(wifi_config.sta.password, wifiParams.password, sizeof(wifi_config.sta.password));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
@@ -133,5 +133,11 @@ esp_err_t WIFI_connect() {
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
     vEventGroupDelete(s_wifi_event_group);
+    return ESP_OK;
+}
+
+esp_err_t WIFI_parseParams(char *ssid, char *password, wifiParams_t *wifiParams) {
+    strcpy (wifiParams->ssid, ssid);
+    strcpy (wifiParams->password, password);
     return ESP_OK;
 }

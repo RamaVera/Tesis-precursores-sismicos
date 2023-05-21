@@ -25,10 +25,15 @@
 #define WIFI_FAIL_BIT      BIT1
 #define EXAMPLE_ESP_MAXIMUM_RETRY  10
 
+#define MAX_STRING_WIFI_PARAMETER 32
 
-esp_err_t WIFI_init(char ssid[32], char pass[32]);
+typedef struct wifiParams {
+    char ssid[MAX_STRING_WIFI_PARAMETER];
+    char password[MAX_STRING_WIFI_PARAMETER]
+} wifiParams_t;
+
+esp_err_t WIFI_init(wifiParams_t wifiParams);
 esp_err_t WIFI_connect(void);
-
-
+esp_err_t WIFI_parseParams(char *ssid, char *password, wifiParams_t *wifiParams);
 
 #endif /* MAIN_WIFI_H_ */
