@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "mqtt_client.h"
+#include <esp_wifi.h>
 
 #define MAX_LENGTH_MQTT_PARAM 32
 typedef struct mqttParams {

@@ -5,10 +5,8 @@
  */
 
 
-#include "wifi.h"
-#include "directory_manager.h"
-#include "main.h"
-#include <esp_wifi.h>
+
+
 #include "mqtt.h"
 
 static const char *TAG = "MQTT";
