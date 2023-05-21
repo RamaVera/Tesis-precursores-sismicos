@@ -9,7 +9,7 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-#define SD_DEBUG_MODE
+//#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
