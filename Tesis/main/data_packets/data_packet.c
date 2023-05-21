@@ -67,9 +67,9 @@ struct MPU9250_t getMPUDataFromPacket(struct QueuePacket aPacket) {
     return mpuRawData;
 }
 
-bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, struct QueuePacket *aPacketToGenerate) {
-    struct SD_data_t *SDdata = NULL;
-    struct QueuePacket aPacket;
+bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, int hour, int min, int sec, struct QueuePacket *aPacketToGenerate) {
+    SD_data_t *SDdata = NULL;
+    QueuePacket_t aPacket;
     SDdata = (struct SD_data_t *) (malloc(sizeof(struct SD_data_t)) );
     if( SDdata == NULL){
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
@@ -79,6 +79,9 @@ bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, struct QueuePa
 
     SDdata->adcData = adcRawData;
     SDdata->mpuData = mpuRawData;
+    SDdata->hour = hour;
+    SDdata->min = min;
+    SDdata->seconds = sec;
     aPacket.dataElement = SDdata;
     aPacket.tick = xTaskGetTickCount();
     *aPacketToGenerate = aPacket;
@@ -86,11 +89,14 @@ bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, struct QueuePa
     return true;
 }
 
-struct SD_data_t getSDDataFromPacket(struct QueuePacket aPacket) {
+SD_data_t getSDDataFromPacket(struct QueuePacket aPacket) {
     SD_data_t SDRawData;
     SD_data_t * SDData = (SD_data_t *) aPacket.dataElement;
     SDRawData.mpuData = SDData->mpuData;
     SDRawData.adcData = SDData->adcData;
+    SDRawData.hour = SDData->hour;
+    SDRawData.min = SDData->min;
+    SDRawData.seconds = SDData->seconds;
     DEBUG_PRINT_DATA_PACKET(TAG,"SD libero memoria para %p",aPacket.dataElement);
     free(aPacket.dataElement);
     return SDRawData;

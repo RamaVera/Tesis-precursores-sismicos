@@ -20,22 +20,25 @@ typedef struct QueuePacket{
     TickType_t tick;
 }QueuePacket_t;
 
-typedef struct SD_data_t {
+typedef struct SD_data {
     MPU9250_t mpuData;
     ADC_t adcData;
+    int hour;
+    int seconds;
+    int min;
 }SD_data_t;
 
 /*****************************************************************************
 * Prototipos
 *****************************************************************************/
-bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate);
-struct ADC_t getADCDataFromPacket(struct QueuePacket aPacket);
+bool buildDataPacketForADC(int adcRawData, QueuePacket_t *aPacketToGenerate);
+struct ADC_t getADCDataFromPacket(QueuePacket_t aPacket);
 
-bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, struct QueuePacket *aPacketToGenerate);
-struct MPU9250_t getMPUDataFromPacket(struct QueuePacket aPacket);
+bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, QueuePacket_t *aPacketToGenerate);
+MPU9250_t getMPUDataFromPacket(QueuePacket_t aPacket);
 
-bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, struct QueuePacket *aPacketToGenerate);
-struct SD_data_t getSDDataFromPacket(struct QueuePacket aPacket);
+bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int min, int sec, QueuePacket_t *aPacketToGenerate);
+SD_data_t getSDDataFromPacket(QueuePacket_t aPacket);
 
 /*****************************************************************************
 * Definiciones
