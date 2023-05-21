@@ -19,7 +19,7 @@ int yearPart,monthPart,dayPart;
 
 esp_err_t DIR_setMainSampleDirectory(int year, int month, int day) {
     
-    sprintf(sampleDirectoryPath, "%s/%d-%d-%d",SAMPLE_PATH, year, month, day);
+    sprintf(sampleDirectoryPath, "%s/%d-%02d-%02d",SAMPLE_PATH, year+1900, month+1, day);
     if(DIR_CreateDirectory(sampleDirectoryPath) != ESP_OK ){
         return ESP_FAIL;
     }
