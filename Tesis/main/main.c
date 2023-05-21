@@ -217,7 +217,7 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
         // xSemaphore_newDataOnMPU toma el semaforo principal.
         // Solo se libera si la interrupcion de nuevo dato disponible lo libera.
         // Para que la interrupcion se de, tiene que llamarse a mpu9250_ready
-        if ( xSemaphoreTake(xSemaphore_newDataOnMPU, portMAX_DELAY) != pdTRUE ){
+        if ( xSemaphoreTake(xSemaphore_newDataOnMPU, 1) != pdTRUE ){
             continue;
         }
 
@@ -261,7 +261,7 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
         // Comprobar si la cola está llena
         //DEBUG_PRINT(TAG,"MPU Queue space %d",uxQueueMessagesWaiting(MPUDataQueue));
         if (uxQueueSpacesAvailable(MPUDataQueue) == 0) {
-            if( xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) == pdTRUE) {
+            if( xSemaphoreTake(xSemaphore_MPUMutexQueue, 1) == pdTRUE) {
                 QueuePacket_t aReceivedPacket;
                 while (xQueueReceive(MPUDataQueue, &aReceivedPacket, 0) == pdTRUE) {
                     item = getMPUDataFromPacket(aReceivedPacket);
@@ -352,7 +352,7 @@ void IRAM_ATTR wifi_publishDataTask(void *pvParameters){
 
     while (1) {
         vTaskDelay(1);
-        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY) == pdTRUE) {
+        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
             if (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
                 DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
                 cJSON *jsonAccelData;
