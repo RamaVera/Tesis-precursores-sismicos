@@ -38,12 +38,15 @@ typedef struct config_params_t{
 esp_err_t SD_init(void);
 esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave);
 esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams);
-void SD_writeHeaderToSampleFile(char *pathToSave);
+esp_err_t SD_writeHeaderToSampleFile(char *pathToSave);
+esp_err_t SD_saveLastConfigParams(config_params_t * params);
+esp_err_t SD_readLastConfigParams(config_params_t * params);
 
 
 /*****************************************************************************
 * Definiciones
 *****************************************************************************/
+
 #define MOUNT_POINT "/sdcard"
 
 

@@ -9,7 +9,7 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-//#define SD_DEBUG_MODE
+#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
@@ -101,42 +101,60 @@ esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *
 }
 
 
-esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams) {
+esp_err_t SD_getDefaultConfigurationParams(config_params_t * configParams) {
 
-    FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
-    if (config_file == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for reading");
-        return ESP_FAIL;
-    }
-    char buffer[1024];
-    if (fgets(buffer, sizeof(buffer), config_file) == NULL) { // Leer la única línea del archivo
-        ESP_LOGE(TAG, "Failed to read file ");
+    if ( access(MOUNT_POINT"/config.dat", F_OK) != 0 ){
+        DEBUG_PRINT_SD(TAG, "Config DAT not found, retrieve from default");
+
+        FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
+        if (config_file == NULL) {
+            ESP_LOGE(TAG, "Failed to open file for reading");
+            return ESP_FAIL;
+        }
+        char buffer[1024];
+        if (fgets(buffer, sizeof(buffer), config_file) == NULL) { // Leer la única línea del archivo
+            ESP_LOGE(TAG, "Failed to read file ");
+            fclose(config_file);
+            return ESP_FAIL;
+        }
         fclose(config_file);
-        return ESP_FAIL;
+
+        char *fields[] = {
+                configParams->wifi_ssid,
+                configParams->wifi_password,
+                configParams->mqtt_ip_broker,
+                configParams->mqtt_user,
+                configParams->mqtt_password,
+                configParams->mqtt_port,
+                configParams->init_year,
+                configParams->init_month,
+                configParams->init_day,
+        };
+
+        const int num_fields = sizeof(fields)/sizeof(fields[0]);
+
+        char *token = strtok(buffer, " | ");
+        int i = 0;
+        while (token != NULL && i < num_fields) {
+            strcpy(fields[i], token);
+            token = strtok(NULL, " | ");
+            i++;
+        }
+
+        if ( SD_saveLastConfigParams(configParams) != ESP_OK ){
+            ESP_LOGE(TAG, "Failed to write dat config file ");
+            return ESP_OK;
+        }
+
+    } else {
+        DEBUG_PRINT_SD(TAG, "Config DAT found, retrieve from DAT");
+
+        if ( SD_readLastConfigParams(configParams) != ESP_OK ){
+            ESP_LOGE(TAG, "Failed to read dat config file ");
+            return ESP_OK;
+        }
     }
-    fclose(config_file);
 
-    char *fields[] = {
-            configParams->wifi_ssid,
-            configParams->wifi_password,
-            configParams->mqtt_ip_broker,
-            configParams->mqtt_user,
-            configParams->mqtt_password,
-            configParams->mqtt_port,
-            configParams->init_year,
-            configParams->init_month,
-            configParams->init_day,
-            };
-
-    const int num_fields = sizeof(fields)/sizeof(fields[0]);
-
-    char *token = strtok(buffer, " | ");
-    int i = 0;
-    while (token != NULL && i < num_fields) {
-        strcpy(fields[i], token);
-        token = strtok(NULL, " | ");
-        i++;
-    }
     DEBUG_PRINT_SD(TAG,"WIFI SSID: %s", configParams->wifi_ssid);
     DEBUG_PRINT_SD(TAG,"Password: %s", configParams->wifi_password);
     DEBUG_PRINT_SD(TAG,"MQTT IP Broker: %s", configParams->mqtt_ip_broker);
@@ -148,6 +166,28 @@ esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams) {
     return ESP_OK;
 }
 
-void SD_writeHeaderToSampleFile(char *pathToSave) {
-    SD_writeDataOnSampleFile("Ax\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
+esp_err_t SD_writeHeaderToSampleFile(char *pathToSave) {
+    return SD_writeDataOnSampleFile("Ax\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
+}
+
+esp_err_t SD_saveLastConfigParams(config_params_t * params) {
+    FILE *f = fopen(MOUNT_POINT"/config.dat","a");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return ESP_FAIL;
+    }
+    fwrite(params,sizeof(config_params_t),1,f);
+    fclose(f);
+    return ESP_OK;
+}
+
+esp_err_t SD_readLastConfigParams(config_params_t * params) {
+    FILE *f = fopen(MOUNT_POINT"/config.dat","r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return ESP_FAIL;
+    }
+    fread(params,sizeof(config_params_t),1,f);
+    fclose(f);
+    return ESP_OK;
 }
