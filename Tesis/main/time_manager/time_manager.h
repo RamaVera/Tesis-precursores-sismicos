@@ -26,8 +26,10 @@ typedef struct tm timeInfo_t;
 esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse);
 esp_err_t RTC_startTimer(void);
 esp_err_t TIME_synchronizeTimeAndDate();
-void TIME_printTimeAndDate(struct tm *timeinfo);
+void TIME_printTimeAndDate(struct tm *timeInfo);
 esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo);
 void TIME_printTimeNow(void);
-struct tm TIME_getInfoTime(struct tm *timeinfo);
+struct tm TIME_getInfoTime(struct tm *timeInfo);
+void TIME_updateParams(timeInfo_t timeInfo, char * yearAsString, char * monthAsString, char * dayAsString);
+
 #endif //RTC_H

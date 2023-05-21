@@ -8,6 +8,21 @@ static const char *TAG = "TIME ";
 
 TimerHandle_t timerHandle;
 
+esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
+    timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(TIMER_PERIOD_MS), pdTRUE, NULL, interruptToCallEveryTimelapse);
+    if (timerHandle == NULL) {
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+esp_err_t RTC_startTimer(void) {
+    if (xTimerStart(timerHandle, 0) != pdPASS) {
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
 esp_err_t TIME_synchronizeTimeAndDate() {
     ESP_LOGI(TAG, "Getting time from NTP server...");
 
@@ -35,17 +50,21 @@ esp_err_t TIME_synchronizeTimeAndDate() {
     return ESP_OK;
 }
 
-timeInfo_t TIME_getInfoTime(timeInfo_t *timeinfo) {
+timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo) {
     time_t now = 0;
     time(&now);
-    localtime_r(&now, timeinfo);
-    return (*timeinfo);
+    localtime_r(&now, timeInfo);
+    return (*timeInfo);
 }
 
 void TIME_printTimeNow(void) {
     timeInfo_t timeinfo;
     TIME_getInfoTime(&timeinfo);
     TIME_printTimeAndDate(&timeinfo);
+}
+
+void TIME_printTimeAndDate(timeInfo_t *timeInfo) {
+    ESP_LOGI(TAG, "Actual Time is: %s", asctime(timeInfo));
 }
 
 esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo) {
@@ -74,24 +93,8 @@ esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * day
     return  ESP_OK;
 }
 
-void TIME_printTimeAndDate(timeInfo_t *timeinfo) {
-    ESP_LOGI(TAG, "Actual Time is: %s", asctime(timeinfo));
+void TIME_updateParams(timeInfo_t timeInfo, char * yearAsString, char * monthAsString, char * dayAsString) {
+    sprintf(yearAsString, "%d", timeInfo.tm_year + 1900);
+    sprintf(yearAsString, "%d", timeInfo.tm_mon + 1);
+    sprintf(yearAsString, "%d", timeInfo.tm_mday);
 }
-
-esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
-    timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(TIMER_PERIOD_MS), pdTRUE, NULL, interruptToCallEveryTimelapse);
-    if (timerHandle == NULL) {
-        return ESP_FAIL;
-    }
-    return ESP_OK;
-}
-
-esp_err_t RTC_startTimer(void) {
-    if (xTimerStart(timerHandle, 0) != pdPASS) {
-        return ESP_FAIL;
-    }
-    return ESP_OK;
-}
-
-
-
