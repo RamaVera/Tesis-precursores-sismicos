@@ -5,6 +5,9 @@
  */
 
 
+#include "wifi.h"
+#include "directory_manager.h"
+#include "main.h"
 #include <esp_wifi.h>
 #include "mqtt.h"
 
@@ -62,16 +65,29 @@ void MQTT_publish(const char * topic, const char * mensaje,int len) {
  /*******************************************************************************
   MQTT_init(): Inicialización de MQTT
   ******************************************************************************/
-esp_err_t MQTT_init(char ip_broker[32], char port[32], char user[32], char password[32]) {
-    char * endptr;
-    uint32_t num = strtol(port, &endptr, 10);
-    if (*endptr != '\0') {
-        ESP_LOGE(TAG,"Error Getting MQTT port");
-        return ESP_FAIL;
-    }
+
+ esp_err_t MQTT_parseParams(char *broker, char *port, char *user, char *password, mqttParams_t *mqttParams) {
+     char * endptr;
+
+     uint32_t num = strtol(port, &endptr, 10);
+     if (*endptr != '\0') {
+         ESP_LOGE(TAG,"Error Getting MQTT port");
+         return ESP_FAIL;
+     }
+
+     strcpy (mqttParams->ip_broker, broker);
+     strcpy (mqttParams->user, user);
+     strcpy (mqttParams->password, password);
+     mqttParams->port = num;
+     return ESP_OK;
+ }
+
+
+esp_err_t MQTT_init(mqttParams_t mqttParam) {
+
     esp_mqtt_client_config_t mqtt_cfg = {
-            .host = ip_broker,
-            .port = num
+            .host = mqttParam.ip_broker,
+            .port = mqttParam.port
     };
     //mqtt_cfg.username = user;
     //mqtt_cfg.password = password;

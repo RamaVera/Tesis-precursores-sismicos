@@ -17,12 +17,22 @@
 #include "sdkconfig.h"
 #include "mqtt_client.h"
 
+#define MAX_LENGTH_MQTT_PARAM 32
+typedef struct mqttParams {
+    char ip_broker[MAX_LENGTH_MQTT_PARAM];
+    int port;
+    char user[MAX_LENGTH_MQTT_PARAM];
+    char password[MAX_LENGTH_MQTT_PARAM];
+} mqttParams_t;
+
 /* Prototipos */
-esp_err_t MQTT_init(char ip_broker[32], char port[32], char user[32], char password[32]);
+esp_err_t MQTT_init(mqttParams_t mqttParam);
 void MQTT_processTopic(const char * , const char * );
 void MQTT_subscribe(const char * );
 void MQTT_publish(const char * , const char * ,int);
 /* Definiciones */
+esp_err_t MQTT_parseParams(char *broker, char *port, char *user, char *password, mqttParams_t *mqttParams);
+
 #define MAX_TOPIC_LENGTH  100
 #define MAX_MSG_LENGTH  100
 
