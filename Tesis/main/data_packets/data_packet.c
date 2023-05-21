@@ -70,7 +70,7 @@ struct MPU9250_t getMPUDataFromPacket(struct QueuePacket aPacket) {
 bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, int hour, int min, int sec, struct QueuePacket *aPacketToGenerate) {
     SD_data_t *SDdata = NULL;
     QueuePacket_t aPacket;
-    SDdata = (struct SD_data_t *) (malloc(sizeof(struct SD_data_t)) );
+    SDdata = (SD_data_t *) (malloc(sizeof(SD_data_t)) );
     if( SDdata == NULL){
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
