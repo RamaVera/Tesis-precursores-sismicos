@@ -7,7 +7,7 @@
 
 #define TIMER_PERIOD_MS (60 * 60 * 1000) // 1hrs timer
 
-#define MAX_RETRIES_FOR_SYNC_TIME 10
+#define MAX_RETRIES_FOR_SYNC_TIME 15
 
 typedef struct tm timeInfo_t;
 
