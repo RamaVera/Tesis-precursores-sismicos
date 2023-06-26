@@ -11,4 +11,5 @@ idf_component_register(
                 "data_packets/data_packet.c"
                 "time_manager/time_manager.c"
                 "directory_manager/directory_manager.c"
+                "command/command.c"
                 )
