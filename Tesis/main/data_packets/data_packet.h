@@ -11,22 +11,14 @@
 #include <malloc.h>
 #include <freertos/portmacro.h>
 #include "esp_log.h"
-#include "../adc/adc.h"
-#include "../mpu_9250/mpu9250.h"
+#include "../data_types.h"
+#include <esp_event.h>
 
 
 typedef struct QueuePacket{
     void * dataElement;
     TickType_t tick;
 }QueuePacket_t;
-
-typedef struct SD_data {
-    MPU9250_t mpuData;
-    ADC_t adcData;
-    int hour;
-    int seconds;
-    int min;
-}SD_data_t;
 
 /*****************************************************************************
 * Prototipos

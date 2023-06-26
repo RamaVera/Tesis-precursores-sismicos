@@ -11,6 +11,7 @@
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
 #include "../pinout.h"
+#include "../data_types.h"
 
 // Experimental
 #define FIXUP_INS_OFFSET
@@ -121,11 +122,6 @@ static const float ADC_16BIT_RESOLUTION = 0.15f;
 #define le16_val(v, idx) ((int16_t)(((uint16_t)v[2*idx+1] << 8) | v[2*idx]))
 
 #define MPU_SPI_DMA_CHAN    0
-
-
-typedef struct MPU9250_t {
-    float Ax, Ay, Az;         /*!< Accelerometer raw data */
-} MPU9250_t;
 
 
 struct sample {

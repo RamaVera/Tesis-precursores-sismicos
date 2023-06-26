@@ -15,7 +15,10 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
 #include "../pinout.h"
+#include "../data_types.h"
 
+
+#define MAX_LINE_LENGTH 64
 #define MAX_LENGTH 32
 #define MIN_LENGTH 8
 
@@ -32,20 +35,17 @@ typedef struct config_params_t{
 }config_params_t;
 
 /*****************************************************************************
-* Prototipos
+* Definiciones
 *****************************************************************************/
 
 esp_err_t SD_init(void);
-esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave);
-esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams);
 esp_err_t SD_writeHeaderToSampleFile(char *pathToSave);
+esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave);
+esp_err_t SD_createSampleFileWithRange(const char *pathToOpen, int startHour, int startMin, int endHour, int endMin, int *lines);
+esp_err_t SD_getDefaultConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
 esp_err_t SD_readLastConfigParams(config_params_t * params);
-
-
-/*****************************************************************************
-* Definiciones
-*****************************************************************************/
+esp_err_t SD_getDataFromSampleFile(char *pathToRetrieve, int line, SD_data_t *dataToRetrieve);
 
 #define MOUNT_POINT "/sdcard"
 
