@@ -25,6 +25,7 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "WIFI ";
 
 static int s_retry_num = 0;
+bool WIFI_isConnected = false;
 
 char dir_ip[20];
 wifi_ap_record_t wifidata;
@@ -37,9 +38,11 @@ esp_event_handler_instance_t instance_got_ip;
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data){
 
         if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-                esp_wifi_connect();
+            WIFI_isConnected = false;
+            esp_wifi_connect();
         } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-                if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
+                WIFI_isConnected = false;
+            if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
                         esp_wifi_connect();
                         s_retry_num++;
                         ESP_LOGI(TAG, "retry to connect to the AP");
@@ -59,7 +62,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
                 if (esp_wifi_sta_get_ap_info(&wifidata)==0) {
                         printf("rssi:%d\r\n", wifidata.rssi);
                 }
-
+                WIFI_isConnected = true;
         }
 }
 
@@ -140,4 +143,8 @@ esp_err_t WIFI_parseParams(char *ssid, char *password, wifiParams_t *wifiParams)
     strcpy (wifiParams->ssid, ssid);
     strcpy (wifiParams->password, password);
     return ESP_OK;
+}
+
+bool WIFI_IsConnected(void){
+    return WIFI_isConnected;
 }
