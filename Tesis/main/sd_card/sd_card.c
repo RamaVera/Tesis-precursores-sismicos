@@ -9,15 +9,16 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-//#define SD_DEBUG_MODE
+#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
 #define DEBUG_PRINT_SD(tag, fmt, ...) do {} while (0)
 #endif
 
-
 sdmmc_card_t *card;
+
+bool SD_isDataTimestamp(int hour, int min, char *token);
 
 esp_err_t SD_init(void){
     // Options for mounting the filesystem.
@@ -78,6 +79,20 @@ esp_err_t SD_init(void){
     return ESP_OK;
 }
 
+esp_err_t SD_writeHeaderToSampleFile(char *pathToSave) {
+    return SD_writeDataOnSampleFile("Time\t\tAx\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
+}
+
+//esp_err_t SD_writDataToSampleFile(SD_data_t data,char *pathToSave) {
+//    sprintf(data, SD_LINE_PATTERN_WITH_NEW_LINE,
+//            sdData.hour,sdData.min,sdData.seconds,
+//            sdData.mpuData.Ax,
+//            sdData.mpuData.Ay,
+//            sdData.mpuData.Az,
+//            sdData.adcData.data);
+//    return SD_writeDataOnSampleFile("Time\tAx\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
+//}
+
 esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave) {
     char path[50];
     sprintf(path,"%s/data.txt",pathToSave);
@@ -100,6 +115,149 @@ esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *
     return ESP_OK;
 }
 
+esp_err_t SD_createSampleFileWithRange(const char *pathToOpen, int startHour, int startMin, int endHour, int endMin, int *lines) {
+    char path[50];
+    sprintf(path,"%s/data.txt",pathToOpen);
+    DEBUG_PRINT_SD(TAG,"%s",path);
+    FILE* file = fopen(path, "r");
+    if (file == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return ESP_FAIL;
+    }
+
+    int startPos = 0, endPos = 0, countLines = 0;
+    char line[MAX_LINE_LENGTH];
+    char * timeStamp;
+    bool startTimeStampFound = false,endTimeStampFound = false;
+
+    while ( fgets(line, sizeof(line), file) ) {
+        countLines ++;
+        timeStamp = strtok(line, "\t");
+        if( !startTimeStampFound && SD_isDataTimestamp(startHour, startMin, timeStamp)){
+            startTimeStampFound = true;
+            startPos = ftell(file);
+        }
+        if( !endTimeStampFound && SD_isDataTimestamp(endHour, endMin, timeStamp)){
+            endTimeStampFound = true;
+            endPos = ftell(file);
+        }
+        if( startTimeStampFound && endTimeStampFound ){
+            DEBUG_PRINT_SD(TAG, "Start and end time found");
+            break;
+        }
+    }
+
+    if (startPos == 0 || endPos == 0) {
+        ESP_LOGE(TAG, "Failed to find start/end time");
+        return ESP_FAIL;
+    }
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    char pathTemp[50];
+    sprintf(pathTemp,"%s/temp.txt",pathToOpen);
+    FILE* temporalFile = fopen(pathTemp, "w");
+    if (file == NULL || temporalFile == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading/writing");
+        return ESP_FAIL;
+    }
+
+    SD_data_t data;
+    char * endptr = NULL;
+    char * token;
+    fseek(file, startPos, SEEK_SET);
+    while (ftell(file) != endPos) {
+        fgets(line, sizeof(line), file);
+
+        token = strtok(line, ":");
+        data.hour = strtol(token, &endptr, 10);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+
+        token = strtok(NULL, ":");
+        data.min = strtol(token, &endptr, 10);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+
+        token = strtok(NULL, ":");
+        data.seconds = strtol(token, &endptr, 10);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+
+        token = strtok(NULL, "\t");
+        data.mpuData.Ax = strtod(token, &endptr);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+
+        token = strtok(NULL, "\t");
+        data.mpuData.Ay = strtod(token, &endptr);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+        
+        token = strtok(NULL, "\t");
+        data.mpuData.Az = strtod(token, &endptr);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+
+        token = strtok(NULL, "\t");
+        data.adcData.data = strtod(token, &endptr);
+        if( endptr == token ){
+            return ESP_FAIL;
+        }
+        fwrite(&data, sizeof(SD_data_t), 1, temporalFile);
+    }
+    fclose(file);
+    fclose(temporalFile);
+    *lines = countLines;
+
+    return ESP_OK;
+}
+
+
+esp_err_t SD_getDataFromSampleFile(char *pathToRetrieve, int line, SD_data_t *dataToRetrieve) {
+    FILE *file = fopen(pathToRetrieve, "r");
+    if (file == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for reading");
+        return ESP_FAIL;
+    }
+    fseek(file, line * sizeof(SD_data_t), SEEK_SET);
+    fread(dataToRetrieve,sizeof (SD_data_t),1,file);
+
+    fclose(file);
+    return ESP_OK;
+}
+
+bool SD_isDataTimestamp(int hour, int min, char *timeStamp) {
+    char copyOfTimeStamp[MAX_LINE_LENGTH];
+    strcpy(copyOfTimeStamp, timeStamp);
+
+    char * endptr = NULL;
+    char * token = strtok(copyOfTimeStamp, ":");
+    if (strtol(token, &endptr, 10) != hour) {
+        return false;
+    }
+    if( endptr == token ){
+        return false;
+    }
+
+    token = strtok(NULL, ":");
+
+    if (strtol(token, &endptr, 10) >= min) {
+        return false;
+    }
+    if( endptr == token ){
+        return false;
+    }
+    return true;
+}
+
+// Configuration files
 
 esp_err_t SD_getDefaultConfigurationParams(config_params_t * configParams) {
 
@@ -164,10 +322,6 @@ esp_err_t SD_getDefaultConfigurationParams(config_params_t * configParams) {
     DEBUG_PRINT_SD(TAG, "Seed Datetime: %s/%s/%s", configParams->init_year, configParams->init_month, configParams->init_day);
 
     return ESP_OK;
-}
-
-esp_err_t SD_writeHeaderToSampleFile(char *pathToSave) {
-    return SD_writeDataOnSampleFile("Ax\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
 }
 
 esp_err_t SD_saveLastConfigParams(config_params_t * params) {
