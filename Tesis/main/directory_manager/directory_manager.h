@@ -23,8 +23,11 @@
 #define MAX_SAMPLE_PATH_LENGTH 52
 
 esp_err_t DIR_setMainSampleDirectory(int year, int month, int day);
+esp_err_t DIR_setRetrieveSampleDirectory(int year, int month, int day);
 esp_err_t DIR_CreateDirectory(char *directoryPath);
-esp_err_t DIR_getPathToWrite(char * path);
+esp_err_t DIR_getMainSampleDirectory(char * path);
+esp_err_t DIR_getRetrieveSampleDirectory(char * path);
+esp_err_t DIR_Exist(char *dirPath);
 
 
 #endif //DIR_MANAGER_H

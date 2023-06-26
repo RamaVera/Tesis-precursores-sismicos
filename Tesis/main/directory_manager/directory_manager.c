@@ -12,6 +12,7 @@
 #endif
 
 char sampleDirectoryPath[MAX_SAMPLE_PATH_LENGTH];
+char retrieveSampleDirectoryPath[MAX_SAMPLE_PATH_LENGTH];
 
 static const char *TAG = "DIRECTORY "; // Para los mensajes de LOG
 
@@ -26,25 +27,44 @@ esp_err_t DIR_setMainSampleDirectory(int year, int month, int day) {
     yearPart = year;
     monthPart = month;
     dayPart = day;
+    return ESP_OK;
+}
 
+esp_err_t DIR_setRetrieveSampleDirectory(int year, int month, int day) {
+    sprintf(retrieveSampleDirectoryPath, "%s/%d-%02d-%02d",SAMPLE_PATH, year, month, day);
+    if( DIR_Exist(retrieveSampleDirectoryPath) != ESP_OK ){
+        return ESP_FAIL;
+    }
+    DEBUG_PRINT_DIR(TAG, "%s set to retrieve samples", retrieveSampleDirectoryPath);
+    return ESP_OK;
+}
+
+esp_err_t DIR_Exist(char *dirPath) {
+    if (access(dirPath, F_OK) != 0 ) {
+        ESP_LOGE(TAG, "%s not found", dirPath);
+        return ESP_FAIL;
+    }
+    DEBUG_PRINT_DIR(TAG, "%s already exist", dirPath);
     return ESP_OK;
 }
 
 esp_err_t DIR_CreateDirectory(char *directoryPath) {
-    if (access(directoryPath, F_OK) != 0 ) {
-        DEBUG_PRINT_DIR(TAG, "%s not found", directoryPath);
-        if (mkdir(directoryPath, PERM_ADMIN) != 0) {
+    if( DIR_Exist(directoryPath) != ESP_OK ){
+        if( mkdir(directoryPath, PERM_ADMIN) != 0) {
             ESP_LOGE(TAG,"Error creating directory");
             return ESP_FAIL;
         }
         DEBUG_PRINT_DIR(TAG, "%s directory create", directoryPath);
-    } else {
-        ESP_LOGI(TAG, "%s already exist", directoryPath);
     }
     return ESP_OK;
 }
 
-esp_err_t DIR_getPathToWrite(char * path){
+esp_err_t DIR_getMainSampleDirectory(char * path){
     memcpy(path, sampleDirectoryPath, sizeof(sampleDirectoryPath));
+    return ESP_OK;
+}
+
+esp_err_t DIR_getRetrieveSampleDirectory(char * path){
+    memcpy(path, retrieveSampleDirectoryPath, sizeof(retrieveSampleDirectoryPath));
     return ESP_OK;
 }
