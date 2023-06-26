@@ -27,6 +27,8 @@
 #include "data_packets/data_packet.h"
 #include "directory_manager/directory_manager.h"
 #include "time_manager/time_manager.h"
+#include "command/command.h"
+
 
 typedef enum status_t{
     START_CONFIG,

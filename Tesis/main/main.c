@@ -8,7 +8,7 @@
 
 
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 #define DEBUG_PRINT_MAIN(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
@@ -22,14 +22,15 @@
 #define QUEUE_LENGTH 50
 #define QUEUE_ITEM_SIZE sizeof(QueuePacket_t)
 
-const char SD_LINE_PATTERN_WITH_NEW_LINE[] ="%02f\t%02f\t%02f\t%d\n";
+const char SD_LINE_PATTERN_WITH_NEW_LINE[] ="%02d:%02d:%02d\t%02f\t%02f\t%02f\t%d\n";
 
 TaskHandle_t FUSION_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
 TaskHandle_t MPU_CALIB_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
 TaskHandle_t ADC_ISR = NULL;
-TaskHandle_t WIFI_PUBLISH_ISR = NULL;
+TaskHandle_t MQTT_PUBLISH_ISR = NULL;
+TaskHandle_t MQTT_RECEIVE_ISR = NULL;
 TaskHandle_t TIME_ISR = NULL;
 
 QueueHandle_t SDDataQueue;
@@ -55,7 +56,8 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
 void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters);
 void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter);
 void IRAM_ATTR sd_savingTask(void *pvParameters);
-void IRAM_ATTR wifi_publishDataTask(void *pvParameters);
+void IRAM_ATTR mqtt_publishDataTask(void *pvParameters);
+void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters);
 void IRAM_ATTR time_internalTimeSync(void *pvParameters);
 
 
@@ -91,7 +93,8 @@ void app_main(void) {
                 if ( WIFI_init(wifiParams) == ESP_OK) {
                     if ( WIFI_connect() == ESP_OK ) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
-                        if ( TIME_synchronizeTimeAndDate() != ESP_OK) return;
+                        MQTT_subscribe("tesis/commands");
+                        if ( TIME_synchronizeTimeAndDate() != ESP_OK) break;
                         if ( RTC_configureTimer(time_syncInternalTimer) != ESP_OK) return;
 
                         TIME_getInfoTime(&timeInfo);
@@ -110,7 +113,6 @@ void app_main(void) {
                 if ( ADC_Init() != ESP_OK) return;
                 if ( MPU9250_init() != ESP_OK) return;
                 if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, false) != ESP_OK) return;
-
                 if ( ESP32_initSemaphores() != ESP_OK) return;
                 if ( ESP32_initQueue() != ESP_OK) return;
                 nextStatus = WAITING_TO_INIT;
@@ -147,7 +149,7 @@ void app_main(void) {
                     vTaskDelete(MPU_ISR);
                     vTaskDelete(MPU_CALIB_ISR);
 
-                    DEBUG_PRINT_MAIN(TAG,"---------------Finish Calibration--------------");
+                    ESP_LOGI(TAG,"---------------Finish Calibration--------------");
                     nextStatus = INIT_SAMPLING;
                 }
                 break;
@@ -158,8 +160,8 @@ void app_main(void) {
                 xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
                 xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
                 xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
-
-                //xTaskCreatePinnedToCore(wifi_publishDataTask, "wifi_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &WIFI_PUBLISH_ISR, 1);
+                xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 1);
+                xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 1);
                 MPU9250_enableInterrupt(true);
                 RTC_startTimer();
                 nextStatus = DONE;
@@ -175,7 +177,7 @@ void printStatus(status_t nextStatus) {
     static status_t lastStatus = ERROR;
 
     if( lastStatus != nextStatus) {
-        DEBUG_PRINT_MAIN(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
+        ESP_LOGI(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
         lastStatus = nextStatus;
     }
 }
@@ -300,8 +302,10 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     char data[50];
     char pathToSave[MAX_SAMPLE_PATH_LENGTH];
 
-    DIR_getPathToWrite(pathToSave);
-    SD_writeHeaderToSampleFile(pathToSave);
+    DIR_getMainSampleDirectory(pathToSave);
+    if( DIR_Exist(pathToSave) != ESP_OK){
+        SD_writeHeaderToSampleFile(pathToSave);
+    }
 
     while (1) {
         vTaskDelay(1);
@@ -318,6 +322,8 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                             if( !notifyDirChange ){
                                 notifyDirChange = true;
 
+                                // Si existe data guardada, implica que correspondía a antes de las 00:00:00
+                                // entonces se guarda en el archivo de la fecha anterior.
                                 if( strlen(data) != 0) {
                                     SD_writeDataOnSampleFile(data, false, pathToSave);
                                     memset(data,0,sizeof(data));
@@ -325,13 +331,14 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
                                 TIME_getInfoTime(&timeInfo);
                                 DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
-                                DIR_getPathToWrite(pathToSave);
+                                DIR_getMainSampleDirectory(pathToSave);
                                 SD_writeHeaderToSampleFile(pathToSave);
                             }
                         } else {
                             notifyDirChange = false;
                         }
                          sprintf(data, SD_LINE_PATTERN_WITH_NEW_LINE,
+                            sdData.hour,sdData.min,sdData.seconds,
                             sdData.mpuData.Ax,
                             sdData.mpuData.Ay,
                             sdData.mpuData.Az,
@@ -345,31 +352,88 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     }
 }
 
-void IRAM_ATTR wifi_publishDataTask(void *pvParameters){
+void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
+    ESP_LOGI(TAG,"MQTT receive command task init");
+    WDT_addTask(MQTT_RECEIVE_ISR);
+    char pathToRetrieve[MAX_SAMPLE_PATH_LENGTH];
+
+
+    while (1) {
+        vTaskDelay(1);
+        if (MQTT_HasCommandToProcess()){
+            command_t command;
+            char rawCommand[MAX_TOPIC_LENGTH];
+            MQTT_GetCommand(rawCommand);
+            if( COMMAND_Parse(rawCommand, &command) != ESP_OK){
+                ESP_LOGE(TAG, "MQTT error parsing command %s", rawCommand);
+                continue;
+            }
+            DEBUG_PRINT_MAIN(TAG, "MQTT Task Received command %s", COMMAND_GetHeaderType(command));
+            switch ( command.header) {
+                case RETRIEVE_DATA:{
+                    int totalLinesOfSamples = 0;
+                    DIR_setRetrieveSampleDirectory(command.startYear,command.startMonth,command.startDay);
+                    DIR_getRetrieveSampleDirectory(pathToRetrieve);
+                    SD_createSampleFileWithRange(pathToRetrieve,
+                                                 command.startHour, command.startMinute,
+                                                 command.endHour, command.endMinute, &totalLinesOfSamples);
+                    DEBUG_PRINT_MAIN(TAG,"Total lines of samples %d",totalLinesOfSamples);
+                    for(int eachLine=0; eachLine < totalLinesOfSamples ; eachLine++){
+                        vTaskDelay(1);
+                        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY) == pdTRUE){
+                            SD_data_t sdData;
+                            if( SD_getDataFromSampleFile(pathToRetrieve, eachLine,&sdData)!= ESP_OK){
+                                ESP_LOGI(TAG,"Error getting data from sample file");
+                                break;
+                            }
+                            DEBUG_PRINT_MAIN(TAG,"MQTT Task Sending data %d %d %d %f %f %f %d",
+                                sdData.hour,sdData.min,sdData.seconds,
+                                sdData.mpuData.Ax,
+                                sdData.mpuData.Ay,
+                                sdData.mpuData.Az,
+                                sdData.adcData.data);
+                            xQueueSend(MQTTDataQueue,&sdData, portMAX_DELAY);
+                            xSemaphoreGive(xSemaphore_ADCMutexQueue);
+                        }
+                    }
+
+                }
+
+            }
+
+        }
+        WDT_reset(MQTT_RECEIVE_ISR);
+    }
+}
+
+void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     ESP_LOGI(TAG,"WIFI publish task init");
-    WDT_addTask(WIFI_PUBLISH_ISR);
-    MPU9250_t item;
+    WDT_addTask(MQTT_PUBLISH_ISR);
+    SD_data_t item;
 
     while (1) {
         vTaskDelay(1);
         if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
             if (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
                 DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
-                cJSON *jsonAccelData;
-                jsonAccelData = cJSON_CreateObject();
-                cJSON_AddNumberToObject(jsonAccelData, "accel_x", item.Ax);
-                cJSON_AddNumberToObject(jsonAccelData, "accel_y", item.Ay);
-                cJSON_AddNumberToObject(jsonAccelData, "accel_z", item.Az);
-
+                cJSON *jsonData;
+                jsonData = cJSON_CreateObject();
+                cJSON_AddNumberToObject(jsonData, "hour", item.hour);
+                cJSON_AddNumberToObject(jsonData, "min", item.min);
+                cJSON_AddNumberToObject(jsonData, "seg", item.seconds);
+                cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
+                cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
+                cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
+                cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
                 char * rendered;
-                rendered = cJSON_Print(jsonAccelData);
+                rendered = cJSON_Print(jsonData);
 
                 MQTT_publish("datos",rendered,strlen(rendered));
-                cJSON_Delete(jsonAccelData);
+                cJSON_Delete(jsonData);
             }
             xSemaphoreGive(xSemaphore_MQTTMutexQueue);
         }
-        WDT_reset(WIFI_PUBLISH_ISR);
+        WDT_reset(MQTT_PUBLISH_ISR);
     }
 }
 
@@ -484,7 +548,6 @@ esp_err_t ESP32_initQueue() {
 
 esp_err_t ESP32_initSemaphores() {
     xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
-
     xSemaphore_MPUMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPUMutexQueue == NULL )  return ESP_FAIL;
     xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
     xSemaphore_ADCMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_ADCMutexQueue == NULL )  return ESP_FAIL;
