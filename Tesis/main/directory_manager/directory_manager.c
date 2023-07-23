@@ -39,6 +39,12 @@ esp_err_t DIR_setRetrieveSampleDirectory(int year, int month, int day) {
     return ESP_OK;
 }
 
+esp_err_t DIR_ExistFile(char *dirPath,char *file) {
+    char pathWithFile[MAX_SAMPLE_PATH_LENGTH];
+    sprintf(pathWithFile, "%s/%s", dirPath,file);
+    return DIR_Exist(pathWithFile);
+}
+
 esp_err_t DIR_Exist(char *dirPath) {
     if (access(dirPath, F_OK) != 0 ) {
         ESP_LOGE(TAG, "%s not found", dirPath);

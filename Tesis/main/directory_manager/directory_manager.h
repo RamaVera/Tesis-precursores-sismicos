@@ -28,6 +28,7 @@ esp_err_t DIR_CreateDirectory(char *directoryPath);
 esp_err_t DIR_getMainSampleDirectory(char * path);
 esp_err_t DIR_getRetrieveSampleDirectory(char * path);
 esp_err_t DIR_Exist(char *dirPath);
+esp_err_t DIR_ExistFile(char *dirPath,char *file);
 
 
 #endif //DIR_MANAGER_H
