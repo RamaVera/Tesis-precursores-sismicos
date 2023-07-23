@@ -3,7 +3,9 @@
 
 #include "esp_task_wdt.h"
 
-static const int defaultTimeout = 10; // 5 segs
+#define SECONDS 1
+#define WATCHDOG_TIMEOUT_IN_SECONDS 10
+static const int defaultTimeout = WATCHDOG_TIMEOUT_IN_SECONDS * SECONDS; // 5 segs
 
 void WDT_enableOnAllCores(void);
 void WDT_disableOnAllCores(void);
