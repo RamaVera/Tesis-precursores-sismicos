@@ -57,9 +57,9 @@ esp_err_t COMMAND_Parse(char *rawCommand, command_t *commandParsed){
 char * COMMAND_GetHeaderType(command_t aCommand) {
     switch (aCommand.header) {
         case RETRIEVE_DATA:
-            return "Retrieve Data Command Header";
+            return "RETRIEVE DATA COMMAND HEADER";
         default:
-            return "Command Not Supported";
+            return "COMMAND NOT SUPPORTED";
 
     }
 }
