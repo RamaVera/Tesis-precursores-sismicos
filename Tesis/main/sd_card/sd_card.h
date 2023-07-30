@@ -17,7 +17,7 @@
 #include "../pinout.h"
 #include "../data_types.h"
 
-#define MAIN_SAMPLE_FILE "data.txt"
+#define MAX_FILE_SIZE   100
 #define MAX_LINE_LENGTH 64
 #define MAX_LENGTH 32
 #define MIN_LENGTH 8
@@ -46,9 +46,9 @@ typedef enum {
 *****************************************************************************/
 
 esp_err_t SD_init(void);
-esp_err_t SD_writeHeaderToSampleFile(char *pathToSave);
-esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave);
-esp_err_t SD_getDataFromSampleFile(char *pathToRetrieve, int line, SD_data_t *dataToRetrieve);
+esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *pathToSave);
+
+esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data_t **dataToRetrieve, size_t *totalDataRetrieved);
 
 esp_err_t SD_getConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
@@ -56,7 +56,9 @@ esp_err_t SD_readLastConfigParams(config_params_t * params);
 esp_err_t SD_getRawConfigParams(char *buffer);
 void SD_parseRawConfigParams(config_params_t *configParams, char *buffer);
 void SD_setFallbackConfigParams(config_params_t *pParams);
-timestamp_comparison_t SD_isDataTimestamp(int hourToSearch, int minToSearch, char *token);
+
+void SD_setSampleFilePath(int hour, int min);
+void SD_setRetrieveSampleFilePath(int hour, int min);
 
 #define MOUNT_POINT "/sdcard"
 

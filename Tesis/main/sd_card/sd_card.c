@@ -16,9 +16,10 @@ const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 #define DEBUG_PRINT_SD(tag, fmt, ...) do {} while (0)
 #endif
 
+char fileToSaveSamples[MAX_LINE_LENGTH];
+char fileToRetrieveSamples[MAX_LINE_LENGTH];
+
 sdmmc_card_t *card;
-
-
 
 esp_err_t SD_init(void){
     // Options for mounting the filesystem.
@@ -79,23 +80,26 @@ esp_err_t SD_init(void){
     return ESP_OK;
 }
 
-esp_err_t SD_writeHeaderToSampleFile(char *pathToSave) {
-    return SD_writeDataOnSampleFile("Time\t\tAx\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
-}
+esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *pathToSave) {
+    SD_sensors_data_t sensorsData[len];
+    for( int i=0;i<len;i++){
+        memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_sensors_data_t));
+    }
 
-//esp_err_t SD_writDataToSampleFile(SD_data_t data,char *pathToSave) {
-//    sprintf(data, SD_LINE_PATTERN_WITH_NEW_LINE,
-//            sdData.hour,sdData.min,sdData.seconds,
-//            sdData.mpuData.Ax,
-//            sdData.mpuData.Ay,
-//            sdData.mpuData.Az,
-//            sdData.adcData.data);
-//    return SD_writeDataOnSampleFile("Time\tAx\t\tAy\t\tAz\t\tADC\t\t", true, pathToSave);
-//}
+//    char dataAsString[MAX_LINE_LENGTH*10];
+//    for(int i=0;i<len;i++){
+//        sprintf(dataAsString,"%02d %02d %02d %f %f %f %d \n",
+//                dataToSave[i].hour,
+//                dataToSave[i].min,
+//                dataToSave[i].seconds,
+//                dataToSave[i].sensorsData.mpuData.Ax,
+//                dataToSave[i].sensorsData.mpuData.Ay,
+//                dataToSave[i].sensorsData.mpuData.Az,
+//                dataToSave[i].sensorsData.adcData.data);
+//    }
 
-esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *pathToSave) {
-    char path[50];
-    sprintf(path,"%s/"MAIN_SAMPLE_FILE,pathToSave);
+    char path[MAX_LINE_LENGTH*2];
+    sprintf(path,"%s/%s",pathToSave,fileToSaveSamples);
     DEBUG_PRINT_SD(TAG,"%s",path);
     FILE *f = fopen(path,"a");
     if (f == NULL) {
@@ -103,59 +107,62 @@ esp_err_t SD_writeDataOnSampleFile(char dataAsString[], bool withNewLine, char *
         return ESP_FAIL;
     }
     DEBUG_PRINT_SD(TAG, "File open");
-
-    if( withNewLine )
-        fprintf(f,"%s \n",dataAsString);
-    else
-        fprintf(f,"%s",dataAsString);
-
+    fwrite(sensorsData,sizeof (SD_sensors_data_t),len,f);
+//    fwrite(dataToSave, sizeof (SD_data_t), len, f);
+//    fprintf(f,"%s",dataAsString);
     DEBUG_PRINT_SD(TAG, "File written");
-
     fclose(f);
     return ESP_OK;
 }
 
-esp_err_t SD_getDataFromSampleFile(char *pathToRetrieve, int line, SD_data_t *dataToRetrieve) {
-    FILE *file = fopen(pathToRetrieve, "r");
+esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data_t **dataToRetrieve, size_t *totalDataRetrieved) {
+    char path[MAX_LINE_LENGTH*2];
+    sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
+    DEBUG_PRINT_SD(TAG,"%s",path);
+    FILE *file = fopen(path, "r");
     if (file == NULL) {
         ESP_LOGE(TAG, "Failed to open file for reading");
         return ESP_FAIL;
     }
-    fseek(file, line * sizeof(SD_data_t), SEEK_SET);
-    fread(dataToRetrieve,sizeof (SD_data_t),1,file);
+    // Obtener el tamaño total del archivo
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Calcular la cantidad de elementos a leer
+    size_t elementSize = sizeof(SD_sensors_data_t); // Reemplaza TU_TIPO_DE_DATO por el tipo de dato real del archivo
+    size_t numElements = fileSize / elementSize;
+    *totalDataRetrieved = numElements;
+    DEBUG_PRINT_SD(TAG,"Number of elements to retrieve %d",numElements);
+    if( numElements == 0  ){
+       ESP_LOGE(TAG, "Error reaching borders of file");
+        return ESP_FAIL;
+    }
+
+    SD_sensors_data_t *dataToRetrieveAux = (SD_sensors_data_t*) malloc(elementSize*numElements);
+    if (dataToRetrieveAux == NULL) {
+        ESP_LOGE(TAG, "Error allocating memory");
+        return ESP_FAIL;
+    }
+
+    if( fread(dataToRetrieveAux,elementSize,numElements,file) != numElements){
+        ESP_LOGE(TAG, "Error reading file");
+        return ESP_FAIL;
+    }
+
+    *dataToRetrieve = dataToRetrieveAux;
+
 
     fclose(file);
     return ESP_OK;
 }
 
-timestamp_comparison_t SD_isDataTimestamp(int hourToSearch, int minToSearch, char *timeStamp) {
-    char copyOfTimeStamp[MAX_LINE_LENGTH];
-    strcpy(copyOfTimeStamp, timeStamp);
-    char * endptr = NULL;
-    char * timeStampToAnalyze = strtok(copyOfTimeStamp, ":");
-    long hourRetrieved = strtol(timeStampToAnalyze, &endptr, 10);
-    if(endptr == timeStampToAnalyze ){
-        ESP_LOGE(TAG, "Error parsing hour");
-        return ERROR_TIMESTAMP;
-    }
-    if (hourRetrieved != hourToSearch) {
-        return hourRetrieved < hourToSearch? BEFORE_TIMESTAMP : AFTER_TIMESTAMP;
-    }
-    DEBUG_PRINT_SD(TAG, "Hour match!: %d on timestamp %s", hourToSearch, timeStamp);
+void SD_setSampleFilePath(int hour, int min) {
+    sprintf(fileToSaveSamples, "%02d_%02d.txt", hour, min);
+}
 
-    timeStampToAnalyze = strtok(NULL, ":");
-    long minRetrieved = strtol(timeStampToAnalyze, &endptr, 10);
-    if(endptr == timeStampToAnalyze ){
-        ESP_LOGE(TAG, "Error parsing hour");
-        return ERROR_TIMESTAMP;
-    }
-    if (minRetrieved != minToSearch) {
-        return minRetrieved < minToSearch? BEFORE_TIMESTAMP : AFTER_TIMESTAMP;
-    }
-    DEBUG_PRINT_SD(TAG, "Min match!: %d:%d on timestamp %s", hourToSearch, minToSearch, timeStamp);
-
-    DEBUG_PRINT_SD(TAG, "Timestamp found");
-    return EQUAL_TIMESTAMP;
+void SD_setRetrieveSampleFilePath(int hour, int min) {
+    sprintf(fileToRetrieveSamples, "%02d_%02d.txt", hour, min);
 }
 
 // Configuration files
