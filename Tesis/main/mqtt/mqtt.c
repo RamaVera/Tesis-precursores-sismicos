@@ -55,8 +55,6 @@ void MQTT_publish(const char * topic, const char * mensaje,int len) {
         strcpy(topicCommands[waitingCommandsToProcess], data);
         waitingCommandsToProcess++;
         ESP_LOGI(TAG, "Data of topic received and saved: %s - commands len %d", data, waitingCommandsToProcess);
-        ESP_LOGI(TAG, "Data saved: %s" ,topicCommands[waitingCommandsToProcess-1]);
-
     }else{
         ESP_LOGE(TAG, "Data of topic not saved: %s - commands len %d is full", data, waitingCommandsToProcess);
     }
