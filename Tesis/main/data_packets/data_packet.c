@@ -77,8 +77,8 @@ bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, 
     }
     DEBUG_PRINT_DATA_PACKET(TAG,"SD Pido memoria para %p",SDdata);
 
-    SDdata->adcData = adcRawData;
-    SDdata->mpuData = mpuRawData;
+    SDdata->sensorsData.adcData = adcRawData;
+    SDdata->sensorsData.mpuData = mpuRawData;
     SDdata->hour = hour;
     SDdata->min = min;
     SDdata->seconds = sec;
@@ -92,8 +92,8 @@ bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, 
 SD_data_t getSDDataFromPacket(struct QueuePacket aPacket) {
     SD_data_t SDRawData;
     SD_data_t * SDData = (SD_data_t *) aPacket.dataElement;
-    SDRawData.mpuData = SDData->mpuData;
-    SDRawData.adcData = SDData->adcData;
+    SDRawData.sensorsData.mpuData = SDData->sensorsData.mpuData;
+    SDRawData.sensorsData.adcData = SDData->sensorsData.adcData;
     SDRawData.hour = SDData->hour;
     SDRawData.min = SDData->min;
     SDRawData.seconds = SDData->seconds;
