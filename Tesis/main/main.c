@@ -6,9 +6,7 @@
  */
 #include "main.h"
 
-
-
-//#define DEBUG
+#define DEBUG
 #ifdef DEBUG
 #define DEBUG_PRINT_MAIN(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
@@ -16,13 +14,12 @@
 #define DEBUG_PRINT_MAIN(tag, fmt, ...) do {} while (0)
 #define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) do {} while (0)
 #endif
+
 /************************************************************************
 * Variables Globales
 ************************************************************************/
 #define QUEUE_LENGTH 50
 #define QUEUE_ITEM_SIZE sizeof(QueuePacket_t)
-
-const char SD_LINE_PATTERN_WITH_NEW_LINE[] ="%02d:%02d:%02d\t%02f\t%02f\t%02f\t%d\n";
 
 TaskHandle_t FUSION_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
@@ -62,29 +59,28 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters);
 
 
 void correlateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
-
 void takeAllSensorSemaphores();
-
 void giveAllSensorSemaphores();
-
+sample_change_case_t analyzeSampleTime(int hour, int min, int seconds);
+char * printSampleTimeState(sample_change_case_t state);
 
 void app_main(void) {
 
-    status_t nextStatus = START_CONFIG;
+    status_t nextStatus = INIT_CONFIG;
 
     defineLogLevels();
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
         switch (nextStatus) {
-            case START_CONFIG:{
+            case INIT_CONFIG:{
                 config_params_t params;
                 wifiParams_t wifiParams;
                 mqttParams_t mqttParams;
                 timeInfo_t timeInfo;
 
-                if ( SD_init() != ESP_OK) return;
-                if ( SD_getDefaultConfigurationParams(&params) != ESP_OK) return;
+                if (SD_init() != ESP_OK) return;
+                if (SD_getConfigurationParams(&params) != ESP_OK) return;
 
                 if ( WIFI_parseParams(params.wifi_ssid, params.wifi_password, &wifiParams) != ESP_OK) return;
                 if ( MQTT_parseParams(params.mqtt_ip_broker,params.mqtt_port,params.mqtt_user,params.mqtt_password,&mqttParams) != ESP_OK) return;
@@ -93,7 +89,7 @@ void app_main(void) {
                 if ( WIFI_init(wifiParams) == ESP_OK) {
                     if ( WIFI_connect() == ESP_OK ) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
-                        MQTT_subscribe("tesis/commands");
+                        MQTT_subscribe(TOPIC_TO_RECEIVE_COMMANDS);
                         if ( TIME_synchronizeTimeAndDate() != ESP_OK) break;
                         if ( RTC_configureTimer(time_syncInternalTimer) != ESP_OK) return;
 
@@ -105,10 +101,10 @@ void app_main(void) {
                 TIME_printTimeAndDate(&timeInfo);
 
                 if ( DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday) != ESP_OK) return;
-                nextStatus = INITIATING;
+                nextStatus = INIT_SENSORS;
                 break;
             }
-            case INITIATING: {
+            case INIT_SENSORS: {
                 if ( Button_init() != ESP_OK) return;
                 if ( ADC_Init() != ESP_OK) return;
                 if ( MPU9250_init() != ESP_OK) return;
@@ -155,10 +151,10 @@ void app_main(void) {
                 break;
             }
             case INIT_SAMPLING: {
-                xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
-                xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
-                xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
-                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
+                //xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
+                //xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
+                //xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
+                //xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
                 xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
                 xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 1);
                 xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 1);
@@ -278,7 +274,7 @@ void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
                 DEBUG_PRINT_MAIN(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
 
                 if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
-                    ESP_LOGI(TAG,"Calibration Fail");
+                    ESP_LOGE(TAG,"Calibration Fail");
                 }else{
                     ESP_LOGI(TAG,"Calibration Done");
                 }
@@ -295,62 +291,67 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     ESP_LOGI(TAG,"SD task init");
     WDT_addTask(SD_ISR);
 
-    bool notifyDirChange = false;
     timeInfo_t timeInfo;
     SD_data_t sdData;
     QueuePacket_t aReceivedPacket;
-    char data[50];
-    char pathToSave[MAX_SAMPLE_PATH_LENGTH];
+    SD_data_t sdDataArray[QUEUE_LENGTH];
+    char mainPathToSave[MAX_SAMPLE_PATH_LENGTH];
+    int sdDataCounter = 0;
 
-    DIR_getMainSampleDirectory(pathToSave);
-    if( DIR_Exist(pathToSave) != ESP_OK){
-        SD_writeHeaderToSampleFile(pathToSave);
-    }
+    DIR_getMainSampleDirectory(mainPathToSave);
 
     while (1) {
         vTaskDelay(1);
-        memset(data,0,sizeof(data));
 
         if(uxQueueMessagesWaiting(SDDataQueue) > 0 ){
             if(xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
 
                 while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
-                        sdData = getSDDataFromPacket(aReceivedPacket);
-                        DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
-
-                        if (sdData.hour == 0 && sdData.min == 0 && sdData.seconds == 0){
-                            if( !notifyDirChange ){
-                                notifyDirChange = true;
-
-                                // Si existe data guardada, implica que correspondía a antes de las 00:00:00
-                                // entonces se guarda en el archivo de la fecha anterior.
-                                if( strlen(data) != 0) {
-                                    SD_writeDataOnSampleFile(data, false, pathToSave);
-                                    memset(data,0,sizeof(data));
-                                }
-
-                                TIME_getInfoTime(&timeInfo);
-                                DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
-                                DIR_getMainSampleDirectory(pathToSave);
-                                SD_writeHeaderToSampleFile(pathToSave);
+                    sdData = getSDDataFromPacket(aReceivedPacket);
+                    //DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
+                    sample_change_case_t sampleTimeState = analyzeSampleTime(sdData.hour, sdData.min, sdData.seconds);
+                    DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData with state %s", printSampleTimeState(sampleTimeState));
+                    switch(sampleTimeState){
+                        case NEW_MINUTE:
+                            if( sdDataCounter != 0) {
+                                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
+                                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
+                                sdDataCounter = 0;
                             }
-                        } else {
-                            notifyDirChange = false;
-                        }
-                         sprintf(data, SD_LINE_PATTERN_WITH_NEW_LINE,
-                            sdData.hour,sdData.min,sdData.seconds,
-                            sdData.mpuData.Ax,
-                            sdData.mpuData.Ay,
-                            sdData.mpuData.Az,
-                            sdData.adcData.data);
+                            SD_setSampleFilePath(sdData.hour, sdData.min);
+                            break;
+                        case NEW_DAY:
+                            // Si existe data guardada, implica que correspondía a antes de las 00:00:00
+                            // entonces se guarda en el archivo de la fecha anterior.
+                            if( sdDataCounter != 0) {
+                                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
+                                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
+                                sdDataCounter = 0;
+                            }
+
+                            TIME_getInfoTime(&timeInfo);
+                            DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
+                            DIR_getMainSampleDirectory(mainPathToSave);
+                            SD_setSampleFilePath(sdData.hour, sdData.min);
+                            break;
+
+                        case NO_CHANGE:
+                        default: ;
+                    }
+                    sdDataArray[sdDataCounter] = sdData;
+                    sdDataCounter++;
                 }
-                SD_writeDataOnSampleFile(data, false, pathToSave);
+                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
+                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
+                sdDataCounter = 0;
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
             }
         }
         WDT_reset(SD_ISR);
     }
 }
+
+
 
 void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     ESP_LOGI(TAG,"MQTT receive command task init");
@@ -371,32 +372,61 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
             DEBUG_PRINT_MAIN(TAG, "MQTT Task Received command %s", COMMAND_GetHeaderType(command));
             switch ( command.header) {
                 case RETRIEVE_DATA:{
-                    int totalLinesOfSamples = 0;
-                    DIR_setRetrieveSampleDirectory(command.startYear,command.startMonth,command.startDay);
+                    bool stillDataToRetrieve = true;
+                    int dayToGet = command.startDay;
+                    int hourToGet = command.startHour;
+                    int minuteToGet = command.startMinute;
+                    DIR_setRetrieveSampleDirectory(command.startYear, command.startMonth, dayToGet);
                     DIR_getRetrieveSampleDirectory(pathToRetrieve);
-                    SD_createSampleFileWithRange(pathToRetrieve,
-                                                 command.startHour, command.startMinute,
-                                                 command.endHour, command.endMinute, &totalLinesOfSamples);
-                    DEBUG_PRINT_MAIN(TAG,"Total lines of samples %d",totalLinesOfSamples);
-                    for(int eachLine=0; eachLine < totalLinesOfSamples ; eachLine++){
+                    DEBUG_PRINT_MAIN(TAG, "Retrieve directory %s", pathToRetrieve);
+                    SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
+                    while(stillDataToRetrieve){
                         vTaskDelay(1);
+                        size_t totalDataRetrieved = 0;
                         if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY) == pdTRUE){
-                            SD_data_t sdData;
-                            if( SD_getDataFromSampleFile(pathToRetrieve, eachLine,&sdData)!= ESP_OK){
-                                ESP_LOGI(TAG,"Error getting data from sample file");
+                            DEBUG_PRINT_MAIN(TAG, "xSemaphoreTake take");
+                            SD_sensors_data_t *sdData = NULL;
+                            if(SD_getDataFromRetrieveSampleFile(pathToRetrieve, &sdData, &totalDataRetrieved) != ESP_OK){
+                                MQTT_publish(TOPIC_TO_PUBLISH_DATA, "error reading", strlen("error reading"));
+                                ESP_LOGE(TAG,"Error getting data from sample file");
+                                xSemaphoreGive(xSemaphore_MQTTMutexQueue);
                                 break;
                             }
-                            DEBUG_PRINT_MAIN(TAG,"MQTT Task Sending data %d %d %d %f %f %f %d",
-                                sdData.hour,sdData.min,sdData.seconds,
-                                sdData.mpuData.Ax,
-                                sdData.mpuData.Ay,
-                                sdData.mpuData.Az,
-                                sdData.adcData.data);
-                            xQueueSend(MQTTDataQueue,&sdData, portMAX_DELAY);
-                            xSemaphoreGive(xSemaphore_ADCMutexQueue);
+                            DEBUG_PRINT_MAIN(TAG,"MQTT Task Retrieved %d data", totalDataRetrieved);
+                            for( int eachSample = 0; eachSample < totalDataRetrieved; eachSample++){
+                                if ( xQueueSend(MQTTDataQueue, &sdData[eachSample], 0) == errQUEUE_FULL){
+                                    ESP_LOGE(TAG,"Error sending data to MQTT queue on sample %d", eachSample);
+                                    xSemaphoreGive(xSemaphore_MQTTMutexQueue);
+                                    eachSample--;
+                                    vTaskDelay(1);
+                                    WDT_reset(MQTT_RECEIVE_ISR);
+                                    xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY);
+                                }
+                            }
+                            free(sdData);
+                            xSemaphoreGive(xSemaphore_MQTTMutexQueue);
+                        }
+                        DEBUG_PRINT_MAIN(TAG, "Checking time");
+                        if( dayToGet == command.endDay && hourToGet == command.endHour && minuteToGet == command.endMinute){
+                            stillDataToRetrieve = false;
+                        } else {
+                            minuteToGet++;
+                            if(minuteToGet == 60){
+                                minuteToGet = 0;
+                                hourToGet++;
+                                if( hourToGet == 24){
+                                    hourToGet = 0;
+                                    dayToGet++;
+                                    DIR_setRetrieveSampleDirectory(command.startYear, command.startMonth, dayToGet);
+                                    DIR_getRetrieveSampleDirectory(pathToRetrieve);
+                                }
+                            
+                            }
+                            SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
                         }
                     }
-
+                    DEBUG_PRINT_MAIN(TAG,"MQTT Task Finished retrieving data");
+                    break;
                 }
 
             }
@@ -409,29 +439,30 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
 void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     ESP_LOGI(TAG,"WIFI publish task init");
     WDT_addTask(MQTT_PUBLISH_ISR);
-    SD_data_t item;
+    SD_sensors_data_t item;
+    int counter = 0;
 
     while (1) {
         vTaskDelay(1);
-        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
-            if (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
-                DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
-                cJSON *jsonData;
-                jsonData = cJSON_CreateObject();
-                cJSON_AddNumberToObject(jsonData, "hour", item.hour);
-                cJSON_AddNumberToObject(jsonData, "min", item.min);
-                cJSON_AddNumberToObject(jsonData, "seg", item.seconds);
-                cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
-                cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
-                cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
-                cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
-                char * rendered;
-                rendered = cJSON_Print(jsonData);
-
-                MQTT_publish("datos",rendered,strlen(rendered));
-                cJSON_Delete(jsonData);
+        if(uxQueueMessagesWaiting(MQTTDataQueue) > 0 ){
+            if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
+                while (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
+                    DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
+                    cJSON *jsonData;
+                    jsonData = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(jsonData, "num", counter++);
+                    cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
+                    cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
+                    cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
+                    cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
+                    char * rendered;
+                    rendered = cJSON_Print(jsonData);
+                    MQTT_publish(TOPIC_TO_PUBLISH_DATA, rendered, strlen(rendered));
+                    cJSON_Delete(jsonData);
+                    WDT_reset(MQTT_PUBLISH_ISR);
+                }
+                xSemaphoreGive(xSemaphore_MQTTMutexQueue);
             }
-            xSemaphoreGive(xSemaphore_MQTTMutexQueue);
         }
         WDT_reset(MQTT_PUBLISH_ISR);
     }
@@ -607,4 +638,35 @@ TickType_t tickAbsDiff(TickType_t tick1, TickType_t tick2) {
     } else {
         return tick2 - tick1;
     }
+}
+
+char * printSampleTimeState(sample_change_case_t state) {
+    switch (state) {
+        case NEW_MINUTE: return "NEW_MINUTE";
+        case NEW_DAY: return "NEW_DAY";
+        case NO_CHANGE: return "NO_CHANGE";
+        default:
+            ESP_LOGE(TAG, "UNKNOWN STATE for sample");
+            return "UNKNOWN";
+    }
+}
+
+sample_change_case_t analyzeSampleTime(int hour, int min, int seconds) {
+    sample_change_case_t changeCase = NO_CHANGE;
+    static int lastMinute = -1;
+    static bool notifyNewDay = false;
+    if (lastMinute != min){
+        lastMinute = min;
+        changeCase = NEW_MINUTE;
+    }
+    if (hour == 0 && min == 0 && seconds == 0){
+        if( !notifyNewDay ){
+            notifyNewDay = true;
+            changeCase = NEW_DAY;
+        }
+    } else {
+        notifyNewDay = false;
+    }
+
+    return changeCase;
 }

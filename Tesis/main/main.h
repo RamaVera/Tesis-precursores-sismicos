@@ -30,15 +30,24 @@
 #include "command/command.h"
 
 
+#define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
+#define TOPIC_TO_PUBLISH_DATA "tesis/data"
 typedef enum status_t{
-    START_CONFIG,
-    INITIATING,
+    INIT_CONFIG,
+    INIT_SENSORS,
     WAITING_TO_INIT,
     CALIBRATION,
     INIT_SAMPLING,
     DONE,
     ERROR,
 }status_t;
+
+
+typedef enum sample_change_case_t{
+    NEW_MINUTE,
+    NEW_DAY,
+    NO_CHANGE,
+}sample_change_case_t;
 
 const char * statusAsString[] = { "START_CONFIG",
                          "INITIATING",
