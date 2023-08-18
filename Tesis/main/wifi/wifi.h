@@ -23,7 +23,7 @@
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-#define EXAMPLE_ESP_MAXIMUM_RETRY  10
+#define ESP_MAXIMUM_RETRY  3
 
 #define MAX_SSID_WIFI_PARAMETER 32
 #define MAX_PASSWORD_WIFI_PARAMETER 64

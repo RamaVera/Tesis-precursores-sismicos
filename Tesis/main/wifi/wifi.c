@@ -41,28 +41,28 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
             WIFI_isConnected = false;
             esp_wifi_connect();
         } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-                WIFI_isConnected = false;
-            if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
-                        esp_wifi_connect();
-                        s_retry_num++;
-                        ESP_LOGI(TAG, "retry to connect to the AP");
-                } else {
-                        xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-                }
-                ESP_LOGI(TAG,"connect to the AP fail");
+            WIFI_isConnected = false;
+            if (s_retry_num < ESP_MAXIMUM_RETRY) {
+                esp_wifi_connect();
+                s_retry_num++;
+                ESP_LOGI(TAG, "retry to connect to the AP");
+            } else {
+                xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            }
+            ESP_LOGI(TAG,"connect to the AP fail");
         } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-                ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-                ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-                s_retry_num = 0;
-                xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+            ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+            ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+            s_retry_num = 0;
+            xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 
-                // Inicializo la variable de la dirección IP para la identificación del nodo
-                sprintf(dir_ip, IPSTR, IP2STR(&event->ip_info.ip));
+            // Inicializo la variable de la dirección IP para la identificación del nodo
+            sprintf(dir_ip, IPSTR, IP2STR(&event->ip_info.ip));
 
-                if (esp_wifi_sta_get_ap_info(&wifidata)==0) {
-                        printf("rssi:%d\r\n", wifidata.rssi);
-                }
-                WIFI_isConnected = true;
+            if (esp_wifi_sta_get_ap_info(&wifidata)==0) {
+                    printf("rssi:%d\r\n", wifidata.rssi);
+            }
+            WIFI_isConnected = true;
         }
 }
 
@@ -128,6 +128,8 @@ esp_err_t WIFI_connect() {
         ESP_LOGI(TAG, "connected to ap");
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect");
+        WIFI_isConnected = false;
+        return ESP_FAIL;
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
@@ -142,6 +144,8 @@ esp_err_t WIFI_connect() {
 esp_err_t WIFI_parseParams(char *ssid, char *password, wifiParams_t *wifiParams) {
     strcpy (wifiParams->ssid, ssid);
     strcpy (wifiParams->password, password);
+    ESP_LOGI(TAG, "SSID: %s", wifiParams->ssid);
+    ESP_LOGI(TAG, "PASS: %s", wifiParams->password);
     return ESP_OK;
 }
 
