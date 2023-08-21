@@ -96,6 +96,7 @@ void app_main(void) {
                         TIME_getInfoTime(&timeInfo);
                         TIME_updateParams(timeInfo,params.init_year, params.init_month, params.init_day);
                         SD_saveLastConfigParams(&params);
+                        RTC_startTimer();
                     }
                 }
                 TIME_printTimeAndDate(&timeInfo);
@@ -122,44 +123,43 @@ void app_main(void) {
                 }
                 if (Button_isPressed()) {
                     WDT_enableOnAllCores();
-                    nextStatus = CALIBRATION;
-                }
-                break;
-            }
-            case CALIBRATION: {
-                static bool creatingTask = true;
-                if (creatingTask) {
-                    creatingTask = false;
-                    xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &MPU_ISR, 0);
-                    xTaskCreatePinnedToCore(mpu9250_calibrationTask, "mpu9250_calibrationTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_CALIB_ISR, 1);
-                    MPU9250_enableInterrupt(true);
-                }
-
-                static bool firstTimeForCalibration = true;
-                if( calibrationDone && firstTimeForCalibration) {
-                    firstTimeForCalibration = false;
-                    MPU9250_enableInterrupt(false);
-                    vTaskDelay(100/portTICK_PERIOD_MS);
-                    WDT_removeTask(MPU_ISR);
-                    WDT_removeTask(MPU_CALIB_ISR);
-                    vTaskDelete(MPU_ISR);
-                    vTaskDelete(MPU_CALIB_ISR);
-
-                    ESP_LOGI(TAG,"---------------Finish Calibration--------------");
                     nextStatus = INIT_SAMPLING;
                 }
                 break;
             }
+//            case CALIBRATION: {
+//                static bool creatingTask = true;
+//                if (creatingTask) {
+//                    creatingTask = false;
+//                    xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &MPU_ISR, 0);
+//                    xTaskCreatePinnedToCore(mpu9250_calibrationTask, "mpu9250_calibrationTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_CALIB_ISR, 1);
+//                    MPU9250_enableInterrupt(true);
+//                }
+//
+//                static bool firstTimeForCalibration = true;
+//                if( calibrationDone && firstTimeForCalibration) {
+//                    firstTimeForCalibration = false;
+//                    MPU9250_enableInterrupt(false);
+//                    vTaskDelay(100/portTICK_PERIOD_MS);
+//                    WDT_removeTask(MPU_ISR);
+//                    WDT_removeTask(MPU_CALIB_ISR);
+//                    vTaskDelete(MPU_ISR);
+//                    vTaskDelete(MPU_CALIB_ISR);
+//
+//                    ESP_LOGI(TAG,"---------------Finish Calibration--------------");
+//                    nextStatus = INIT_SAMPLING;
+//                }
+//                break;
+//            }
             case INIT_SAMPLING: {
-                //xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
-                //xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
-                //xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
-                //xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
-                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
+                xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
+                xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
+                xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
+                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
+                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 1);
                 xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 1);
-                xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 1);
+                xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 0);
                 MPU9250_enableInterrupt(true);
-                RTC_startTimer();
                 nextStatus = DONE;
                 break;
             }
@@ -226,12 +226,11 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
             xSemaphoreGive(xSemaphore_newDataOnMPU);
             continue;
         }
-        DEBUG_PRINT_MAIN(TAG, "MPU Task Received item %02f %02f %02f", data.Ax,data.Ay,data.Az);
 
         // xSemaphore_queue toma el semaforo para que se acceda a la cola
         if(xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) == pdTRUE){
             QueuePacket_t aPacket;
-            if( !buildDataPacketForMPU(data.Ax,data.Ay,data.Az,&aPacket) ){
+            if( !buildDataPacketForMPU(data, &aPacket)){
                 ESP_LOGE(TAG,"Error building packet");
                 xSemaphoreGive(xSemaphore_newDataOnMPU);
                 continue;
@@ -245,46 +244,46 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
         WDT_reset(MPU_ISR);
     }
 }
-
-void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
-
-    ESP_LOGI(TAG,"MPU calibration task init");
-    WDT_addTask(MPU_CALIB_ISR);
-
-    MPU9250_t item;
-    MPU9250_t accumulator;
-
-    while (1) {
-        vTaskDelay(1);
-        // Comprobar si la cola está llena
-        //DEBUG_PRINT(TAG,"MPU Queue space %d",uxQueueMessagesWaiting(MPUDataQueue));
-        if (uxQueueSpacesAvailable(MPUDataQueue) == 0) {
-            if( xSemaphoreTake(xSemaphore_MPUMutexQueue, 1) == pdTRUE) {
-                QueuePacket_t aReceivedPacket;
-                while (xQueueReceive(MPUDataQueue, &aReceivedPacket, 0) == pdTRUE) {
-                    item = getMPUDataFromPacket(aReceivedPacket);
-                    accumulator.Ax += item.Ax;
-                    accumulator.Ay += item.Ay;
-                    accumulator.Az += item.Az;
-                }
-                accumulator.Ax /= QUEUE_LENGTH;
-                accumulator.Ay /= QUEUE_LENGTH;
-                accumulator.Az /= QUEUE_LENGTH;
-
-                DEBUG_PRINT_MAIN(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
-
-                if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
-                    ESP_LOGE(TAG,"Calibration Fail");
-                }else{
-                    ESP_LOGI(TAG,"Calibration Done");
-                }
-                calibrationDone = true;
-                xSemaphoreGive(xSemaphore_MPUMutexQueue);
-            }
-        }
-        WDT_reset(MPU_CALIB_ISR);
-    }
-}
+//
+//void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
+//
+//    ESP_LOGI(TAG,"MPU calibration task init");
+//    WDT_addTask(MPU_CALIB_ISR);
+//
+//    MPU9250_t item;
+//    MPU9250_t accumulator;
+//
+//    while (1) {
+//        vTaskDelay(1);
+//        // Comprobar si la cola está llena
+//        //DEBUG_PRINT(TAG,"MPU Queue space %d",uxQueueMessagesWaiting(MPUDataQueue));
+//        if (uxQueueSpacesAvailable(MPUDataQueue) == 0) {
+//            if( xSemaphoreTake(xSemaphore_MPUMutexQueue, 1) == pdTRUE) {
+//                QueuePacket_t aReceivedPacket;
+//                while (xQueueReceive(MPUDataQueue, &aReceivedPacket, 0) == pdTRUE) {
+//                    item = getMPUDataFromPacket(aReceivedPacket);
+//                    accumulator.Ax += item.Ax;
+//                    accumulator.Ay += item.Ay;
+//                    accumulator.Az += item.Az;
+//                }
+//                accumulator.Ax /= QUEUE_LENGTH;
+//                accumulator.Ay /= QUEUE_LENGTH;
+//                accumulator.Az /= QUEUE_LENGTH;
+//
+//                DEBUG_PRINT_MAIN(TAG, "MPU Calibration Task %02f %02f %02f", accumulator.Ax,accumulator.Ay,accumulator.Az);
+//
+//                if( MPU9250_SetCalibrationForAccel(&accumulator) != ESP_OK){
+//                    ESP_LOGE(TAG,"Calibration Fail");
+//                }else{
+//                    ESP_LOGI(TAG,"Calibration Done");
+//                }
+//                calibrationDone = true;
+//                xSemaphoreGive(xSemaphore_MPUMutexQueue);
+//            }
+//        }
+//        WDT_reset(MPU_CALIB_ISR);
+//    }
+//}
 
 void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
@@ -351,13 +350,10 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     }
 }
 
-
-
 void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     ESP_LOGI(TAG,"MQTT receive command task init");
     WDT_addTask(MQTT_RECEIVE_ISR);
     char pathToRetrieve[MAX_SAMPLE_PATH_LENGTH];
-
 
     while (1) {
         vTaskDelay(1);
@@ -380,6 +376,7 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
                     DIR_getRetrieveSampleDirectory(pathToRetrieve);
                     DEBUG_PRINT_MAIN(TAG, "Retrieve directory %s", pathToRetrieve);
                     SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
+
                     while(stillDataToRetrieve){
                         vTaskDelay(1);
                         size_t totalDataRetrieved = 0;
@@ -436,11 +433,19 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     }
 }
 
+#define MAX_CHARS_PER_UINT8  3   // Estimación generosa para uint8_t (hasta 3 dígitos)
+#define MAX_CHARS_PER_INT    12  // Estimación generosa para int (hasta 11 dígitos y signo)
+#define NEW_LINE              1   //  carácter de nueva línea
+#define MAX_CHARS_PER_SAMPLE (MAX_CHARS_PER_UINT8 * 6 + MAX_CHARS_PER_INT * 1 + NEW_LINE)
+
 void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     ESP_LOGI(TAG,"WIFI publish task init");
     WDT_addTask(MQTT_PUBLISH_ISR);
     SD_sensors_data_t item;
-    int counter = 0;
+    char dataToSend[MAX_CHARS_PER_SAMPLE];
+    char counterStr[10];
+    char maxDataToSend[MAX_CHARS_PER_SAMPLE*100];
+    size_t counter = 0;
 
     while (1) {
         vTaskDelay(1);
@@ -448,20 +453,39 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
             if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
                 while (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
                     DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
-                    cJSON *jsonData;
-                    jsonData = cJSON_CreateObject();
-                    cJSON_AddNumberToObject(jsonData, "num", counter++);
-                    cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
-                    cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
-                    cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
-                    cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
-                    char * rendered;
-                    rendered = cJSON_Print(jsonData);
-                    MQTT_publish(TOPIC_TO_PUBLISH_DATA, rendered, strlen(rendered));
-                    cJSON_Delete(jsonData);
+                    counter++;
+                    memset(dataToSend, 0, sizeof(dataToSend));
+                    sprintf(dataToSend,"%u%u%u%u%u%u%d\n",
+                            item.mpuData.AxH,
+                            item.mpuData.AxL,
+                            item.mpuData.AyH,
+                            item.mpuData.AyL,
+                            item.mpuData.AzL,
+                            item.mpuData.AzH,
+                            item.adcData.data);
+                    strcat(maxDataToSend, dataToSend);
+
+                    if (strlen(maxDataToSend) + strlen(dataToSend) > MAX_CHARS_PER_SAMPLE*100){
+                        sprintf(counterStr,"%d-", counter);
+                        strcat(counterStr, maxDataToSend);
+                        break;
+                    }
                     WDT_reset(MQTT_PUBLISH_ISR);
+//                    cJSON *jsonData;
+//                    jsonData = cJSON_CreateObject();
+//                    cJSON_AddNumberToObject(jsonData, "num", counter++);
+//                    cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
+//                    cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
+//                    cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
+//                    cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
+//                    char * rendered;
+//                    rendered = cJSON_Print(jsonData);
+//                    cJSON_Delete(jsonData);
                 }
                 xSemaphoreGive(xSemaphore_MQTTMutexQueue);
+                MQTT_publish(TOPIC_TO_PUBLISH_DATA, maxDataToSend, strlen(maxDataToSend));
+                memset(maxDataToSend, 0, sizeof(maxDataToSend));
+                counter = 1;
             }
         }
         WDT_reset(MQTT_PUBLISH_ISR);
