@@ -81,37 +81,29 @@ esp_err_t SD_init(void){
 }
 
 esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *pathToSave) {
-    SD_sensors_data_t sensorsData[len];
+    SD_sensors_data_t * sensorsData = (SD_sensors_data_t *) malloc(sizeof (SD_sensors_data_t)*len);
+    if (sensorsData == NULL){
+        ESP_LOGE(TAG, "Failed to allocate memory for sensorsData");
+        return ESP_FAIL;
+    }
+
     for( int i=0;i<len;i++){
         memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_sensors_data_t));
     }
 
-//    char dataAsString[MAX_LINE_LENGTH*10];
-//    for(int i=0;i<len;i++){
-//        sprintf(dataAsString,"%02d %02d %02d %f %f %f %d \n",
-//                dataToSave[i].hour,
-//                dataToSave[i].min,
-//                dataToSave[i].seconds,
-//                dataToSave[i].sensorsData.mpuData.Ax,
-//                dataToSave[i].sensorsData.mpuData.Ay,
-//                dataToSave[i].sensorsData.mpuData.Az,
-//                dataToSave[i].sensorsData.adcData.data);
-//    }
-
     char path[MAX_LINE_LENGTH*2];
     sprintf(path,"%s/%s",pathToSave,fileToSaveSamples);
+
     DEBUG_PRINT_SD(TAG,"%s",path);
     FILE *f = fopen(path,"a");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
     }
-    DEBUG_PRINT_SD(TAG, "File open");
     fwrite(sensorsData,sizeof (SD_sensors_data_t),len,f);
-//    fwrite(dataToSave, sizeof (SD_data_t), len, f);
-//    fprintf(f,"%s",dataAsString);
-    DEBUG_PRINT_SD(TAG, "File written");
+
     fclose(f);
+    free(sensorsData);
     return ESP_OK;
 }
 
@@ -130,7 +122,7 @@ esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data
     fseek(file, 0, SEEK_SET);
 
     // Calcular la cantidad de elementos a leer
-    size_t elementSize = sizeof(SD_sensors_data_t); // Reemplaza TU_TIPO_DE_DATO por el tipo de dato real del archivo
+    size_t elementSize = sizeof(SD_sensors_data_t);
     size_t numElements = fileSize / elementSize;
     *totalDataRetrieved = numElements;
     DEBUG_PRINT_SD(TAG,"Number of elements to retrieve %d",numElements);
@@ -170,11 +162,13 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
     if ( access(MOUNT_POINT"/config.dat", F_OK) != 0 ){
         DEBUG_PRINT_SD(TAG, "Config DAT not found, retrieve from default");
-        char buffer[1024];
+        char buffer[MAX_LINE_SIZE];
 
-        if (SD_getRawConfigParams(buffer) == ESP_OK ){
+        if (SD_getRawConfigParams(buffer, MAX_LINE_SIZE) == ESP_OK ){
+            ESP_LOGI(TAG, "Parsing from config.txt");
             SD_parseRawConfigParams(configParams, buffer);
         } else {
+            ESP_LOGI(TAG, "Parsing from fallback");
             SD_setFallbackConfigParams(configParams);
         }
 
@@ -233,24 +227,26 @@ void SD_parseRawConfigParams(config_params_t *configParams, char *buffer) {
     char *token = strtok(buffer, " | ");
     int i = 0;
     while (token != NULL && i < num_fields) {
+        DEBUG_PRINT_SD(TAG, "Token: %s", token);
         strcpy(fields[i], token);
         token = strtok(NULL, " | ");
         i++;
     }
 }
 
-esp_err_t SD_getRawConfigParams(char *buffer) {
+esp_err_t SD_getRawConfigParams(char *buffer, int size) {
     FILE *config_file = fopen(MOUNT_POINT"/config.txt", "r");
     if (config_file == NULL) {
         ESP_LOGE(TAG, "Failed to open file for reading");
         return ESP_FAIL;
     }
 
-    if (fgets(buffer, sizeof(buffer), config_file) == NULL) { // Leer la única línea del archivo
+    if (fgets(buffer, size, config_file) == NULL) { // Leer la única línea del archivo
         ESP_LOGE(TAG, "Failed to read file ");
         fclose(config_file);
         return ESP_FAIL;
     }
+    DEBUG_PRINT_SD(TAG, "Buffer: %s", buffer);
     fclose(config_file);
     return ESP_OK;
 }

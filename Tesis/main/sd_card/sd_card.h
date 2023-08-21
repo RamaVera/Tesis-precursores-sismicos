@@ -41,6 +41,8 @@ typedef enum {
     ERROR_TIMESTAMP
 } timestamp_comparison_t;
 
+static const int MAX_LINE_SIZE = 500;
+
 /*****************************************************************************
 * Definiciones
 *****************************************************************************/
@@ -53,7 +55,7 @@ esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data
 esp_err_t SD_getConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
 esp_err_t SD_readLastConfigParams(config_params_t * params);
-esp_err_t SD_getRawConfigParams(char *buffer);
+esp_err_t SD_getRawConfigParams(char *buffer, int i);
 void SD_parseRawConfigParams(config_params_t *configParams, char *buffer);
 void SD_setFallbackConfigParams(config_params_t *pParams);
 
