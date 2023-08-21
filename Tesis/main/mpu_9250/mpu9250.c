@@ -133,26 +133,31 @@ esp_err_t MPU9250_ReadAcce(MPU9250_t * sampleOfMPU) {
     if( mpu9250_readn(ACCEL_XOUT_H,data,6)  != ESP_OK){
         return ESP_FAIL;
     }
-
-    /* Read accelerometer data */
-    axRaw = ((int16_t)data[0] << 8) | data[1];
-    ayRaw = ((int16_t)data[2] << 8) | data[3];
-    azRaw = ((int16_t)data[4] << 8) | data[5];
-
-    float AMult = 2.0f / 32768.0f;
-
-    sampleOfMPU->Ax = (float)axRaw * AMult - Offset.Ax;
-    sampleOfMPU->Ay = (float)ayRaw * AMult - Offset.Ay;
-    sampleOfMPU->Az = (float)azRaw * AMult - Offset.Az;
+    sampleOfMPU->AxH = data[0];
+    sampleOfMPU->AxL = data[1];
+    sampleOfMPU->AyH = data[2];
+    sampleOfMPU->AyL = data[3];
+    sampleOfMPU->AzH = data[4];
+    sampleOfMPU->AzL = data[5];
+//    /* Read accelerometer data */
+//    axRaw = ((int16_t)data[0] << 8) | data[1];
+//    ayRaw = ((int16_t)data[2] << 8) | data[3];
+//    azRaw = ((int16_t)data[4] << 8) | data[5];
+//
+//    float AMult = 2.0f / 32768.0f;
+//
+//    sampleOfMPU->Ax = (float)axRaw * AMult - Offset.Ax;
+//    sampleOfMPU->Ay = (float)ayRaw * AMult - Offset.Ay;
+//    sampleOfMPU->Az = (float)azRaw * AMult - Offset.Az;
     return ESP_OK;
 }
 
 
 esp_err_t MPU9250_SetCalibrationForAccel(MPU9250_t * meanAccel){
 
-    Offset.Ax = meanAccel->Ax;
-    Offset.Ay = meanAccel->Ay;
-    Offset.Az = meanAccel->Az + ((meanAccel->Az > 0L)? -1.0:1.0);
+//    Offset.Ax = meanAccel->Ax;
+//    Offset.Ay = meanAccel->Ay;
+//    Offset.Az = meanAccel->Az + ((meanAccel->Az > 0L)? -1.0:1.0);
 
     /*
     float AMult = 2.0f / 32768.0f;

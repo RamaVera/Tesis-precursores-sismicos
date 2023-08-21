@@ -36,7 +36,7 @@ ADC_t getADCDataFromPacket(struct QueuePacket aPacket) {
     return adcRawData;
 }
 
-bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, struct QueuePacket *aPacketToGenerate) {
+bool buildDataPacketForMPU(MPU9250_t dataToPack, struct QueuePacket *aPacketToGenerate) {
     struct MPU9250_t *mpu9250data = NULL;
     struct QueuePacket aPacket;
     mpu9250data = (struct MPU9250_t *) (malloc(sizeof(struct MPU9250_t)));
@@ -46,9 +46,13 @@ bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, struct QueuePa
     }
     DEBUG_PRINT_DATA_PACKET(TAG,"MPU Pido memoria para %p",mpu9250data);
 
-    mpu9250data->Ax = rawAx;
-    mpu9250data->Ay = rawAy;
-    mpu9250data->Az = rawAz;
+    mpu9250data->AxH = dataToPack.AxH;
+    mpu9250data->AyH = dataToPack.AyH;
+    mpu9250data->AzH = dataToPack.AzH;
+    mpu9250data->AxL = dataToPack.AxL;
+    mpu9250data->AyL = dataToPack.AyL;
+    mpu9250data->AzL = dataToPack.AzL;
+
     aPacket.dataElement = mpu9250data;
     aPacket.tick = xTaskGetTickCount();
     *aPacketToGenerate = aPacket;
@@ -56,18 +60,21 @@ bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, struct QueuePa
     return true;
 }
 
-struct MPU9250_t getMPUDataFromPacket(struct QueuePacket aPacket) {
+struct MPU9250_t getMPUDataFromPacket(QueuePacket_t aPacket) {
     MPU9250_t mpuRawData;
     MPU9250_t * mpuData = (MPU9250_t *) aPacket.dataElement;
-    mpuRawData.Ax = mpuData->Ax;
-    mpuRawData.Ay = mpuData->Ay;
-    mpuRawData.Az = mpuData->Az;
+    mpuRawData.AxH = mpuData->AxH;
+    mpuRawData.AyH = mpuData->AyH;
+    mpuRawData.AzH = mpuData->AzH;
+    mpuRawData.AxL = mpuData->AxL;
+    mpuRawData.AyL = mpuData->AyL;
+    mpuRawData.AzL = mpuData->AzL;
     DEBUG_PRINT_DATA_PACKET(TAG,"MPU libero memoria para %p",aPacket.dataElement);
     free(aPacket.dataElement);
     return mpuRawData;
 }
 
-bool buildDataPacketForSD(struct MPU9250_t mpuRawData, struct ADC_t adcRawData, int hour, int min, int sec, struct QueuePacket *aPacketToGenerate) {
+bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int min, int sec, QueuePacket_t *aPacketToGenerate) {
     SD_data_t *SDdata = NULL;
     QueuePacket_t aPacket;
     SDdata = (SD_data_t *) (malloc(sizeof(SD_data_t)) );

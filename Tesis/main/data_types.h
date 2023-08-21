@@ -6,7 +6,8 @@
 #define DATA_TYPES_H
 
 typedef struct MPU9250_t {
-    float Ax, Ay, Az;         /*!< Accelerometer raw data */
+    uint8_t AxH, AyH, AzH;         /*!< Accelerometer raw data */
+    uint8_t AxL, AyL, AzL;         /*!< Accelerometer raw data */
 } MPU9250_t;
 
 typedef struct ADC_t{
@@ -14,8 +15,8 @@ typedef struct ADC_t{
 }ADC_t ;
 
 typedef struct SD_sensors_data{
-    struct MPU9250_t mpuData;
-    struct ADC_t adcData;
+    MPU9250_t mpuData;
+    ADC_t adcData;
 }SD_sensors_data_t;
 
 typedef struct SD_data {

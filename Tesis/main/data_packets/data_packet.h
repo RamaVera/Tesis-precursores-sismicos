@@ -26,7 +26,7 @@ typedef struct QueuePacket{
 bool buildDataPacketForADC(int adcRawData, QueuePacket_t *aPacketToGenerate);
 struct ADC_t getADCDataFromPacket(QueuePacket_t aPacket);
 
-bool buildDataPacketForMPU(float rawAx, float rawAy, float rawAz, QueuePacket_t *aPacketToGenerate);
+bool buildDataPacketForMPU(MPU9250_t dataToPack, struct QueuePacket *aPacketToGenerate);
 MPU9250_t getMPUDataFromPacket(QueuePacket_t aPacket);
 
 bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int min, int sec, QueuePacket_t *aPacketToGenerate);
