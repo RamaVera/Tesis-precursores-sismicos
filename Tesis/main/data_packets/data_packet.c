@@ -27,12 +27,12 @@ bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate
     return true;
 }
 
-ADC_t getADCDataFromPacket(struct QueuePacket aPacket) {
+ADC_t getADCDataFromPacket(QueuePacket_t *aPacket) {
     ADC_t adcRawData;
-    ADC_t * adcData = (ADC_t *) aPacket.dataElement;
+    ADC_t * adcData = (ADC_t *) aPacket->dataElement;
     adcRawData.data = adcData->data;
-    DEBUG_PRINT_DATA_PACKET(TAG,"ADC libero memoria para %p",aPacket.dataElement);
-    free(aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"ADC libero memoria para %p",aPacket->dataElement);
+    free(aPacket->dataElement);
     return adcRawData;
 }
 
@@ -60,17 +60,18 @@ bool buildDataPacketForMPU(MPU9250_t dataToPack, struct QueuePacket *aPacketToGe
     return true;
 }
 
-struct MPU9250_t getMPUDataFromPacket(QueuePacket_t aPacket) {
+MPU9250_t getMPUDataFromPacket(QueuePacket_t *aPacket) {
     MPU9250_t mpuRawData;
-    MPU9250_t * mpuData = (MPU9250_t *) aPacket.dataElement;
+    MPU9250_t * mpuData = (MPU9250_t *) aPacket->dataElement;
     mpuRawData.AxH = mpuData->AxH;
     mpuRawData.AyH = mpuData->AyH;
     mpuRawData.AzH = mpuData->AzH;
     mpuRawData.AxL = mpuData->AxL;
     mpuRawData.AyL = mpuData->AyL;
     mpuRawData.AzL = mpuData->AzL;
-    DEBUG_PRINT_DATA_PACKET(TAG,"MPU libero memoria para %p",aPacket.dataElement);
-    free(aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"MPU libero memoria para %p",aPacket->dataElement);
+    free(aPacket->dataElement);
+
     return mpuRawData;
 }
 
@@ -96,15 +97,16 @@ bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int 
     return true;
 }
 
-SD_data_t getSDDataFromPacket(struct QueuePacket aPacket) {
+SD_data_t getSDDataFromPacket(QueuePacket_t *aPacket) {
     SD_data_t SDRawData;
-    SD_data_t * SDData = (SD_data_t *) aPacket.dataElement;
+    SD_data_t * SDData = (SD_data_t *) aPacket->dataElement;
     SDRawData.sensorsData.mpuData = SDData->sensorsData.mpuData;
     SDRawData.sensorsData.adcData = SDData->sensorsData.adcData;
     SDRawData.hour = SDData->hour;
     SDRawData.min = SDData->min;
     SDRawData.seconds = SDData->seconds;
-    DEBUG_PRINT_DATA_PACKET(TAG,"SD libero memoria para %p",aPacket.dataElement);
-    free(aPacket.dataElement);
+    DEBUG_PRINT_DATA_PACKET(TAG,"SD libero memoria para %p",aPacket->dataElement);
+    free(aPacket->dataElement);
+
     return SDRawData;
 }
