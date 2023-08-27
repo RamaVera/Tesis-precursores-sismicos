@@ -8,7 +8,7 @@ static const char *TAG = "TIME ";
 
 TimerHandle_t timerHandle;
 
-esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
+esp_err_t TIMER_create(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
     timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(TIMER_PERIOD_MS), pdTRUE, NULL, interruptToCallEveryTimelapse);
     if (timerHandle == NULL) {
         return ESP_FAIL;
@@ -16,7 +16,7 @@ esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelap
     return ESP_OK;
 }
 
-esp_err_t RTC_startTimer(void) {
+esp_err_t TIMER_start(void) {
     if (xTimerStart(timerHandle, 0) != pdPASS) {
         return ESP_FAIL;
     }

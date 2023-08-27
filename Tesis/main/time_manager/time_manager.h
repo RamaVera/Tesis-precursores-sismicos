@@ -23,8 +23,8 @@ typedef struct tm timeInfo_t;
 #include <string.h>
 
 
-esp_err_t RTC_configureTimer(TimerCallbackFunction_t interruptToCallEveryTimelapse);
-esp_err_t RTC_startTimer(void);
+esp_err_t TIMER_create(TimerCallbackFunction_t interruptToCallEveryTimelapse);
+esp_err_t TIMER_start(void);
 esp_err_t TIME_synchronizeTimeAndDate();
 void TIME_printTimeAndDate(struct tm *timeInfo);
 esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo);
