@@ -43,6 +43,8 @@ SemaphoreHandle_t xSemaphore_SDMutexQueue = NULL;
 
 bool calibrationDone = false;
 
+uint64_t sampleRateInMS = 10 * portTICK_PERIOD_MS;
+
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
 void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
@@ -58,11 +60,13 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters);
 void IRAM_ATTR time_internalTimeSync(void *pvParameters);
 
 
-void correlateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue);
-void takeAllSensorSemaphores();
+bool takeSensorQueueWhenSamplesAre(int numberOfSamples);
+QueuePacket_t * copyQueueToBuffer(QueueHandle_t queue, size_t * bufferLength);
 void giveAllSensorSemaphores();
 sample_change_case_t analyzeSampleTime(int hour, int min, int seconds);
 char * printSampleTimeState(sample_change_case_t state);
+void matchSensorsSamples(QueuePacket_t *mpuBuffer, QueuePacket_t *adcBuffer, size_t mpuLength, size_t adcLength);
+TickType_t getTimeDiffInMs(TickType_t initTime);
 
 void app_main(void) {
 
@@ -91,12 +95,12 @@ void app_main(void) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
                         MQTT_subscribe(TOPIC_TO_RECEIVE_COMMANDS);
                         if ( TIME_synchronizeTimeAndDate() != ESP_OK) break;
-                        if ( RTC_configureTimer(time_syncInternalTimer) != ESP_OK) return;
+                        if ( TIMER_create(time_syncInternalTimer) != ESP_OK) return;
 
                         TIME_getInfoTime(&timeInfo);
                         TIME_updateParams(timeInfo,params.init_year, params.init_month, params.init_day);
                         SD_saveLastConfigParams(&params);
-                        RTC_startTimer();
+                        TIMER_start();
                     }
                 }
                 TIME_printTimeAndDate(&timeInfo);
@@ -154,11 +158,12 @@ void app_main(void) {
             case INIT_SAMPLING: {
                 xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
-                xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
-                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,0);
-                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 1);
-                xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 1);
+                xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,1);
+
+                xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 0);
+                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
                 xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 0);
+                xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &SD_ISR,0);
                 MPU9250_enableInterrupt(true);
                 nextStatus = DONE;
                 break;
@@ -184,8 +189,6 @@ void defineLogLevels() {
     esp_log_level_set("SD_CARD", ESP_LOG_INFO );
     esp_log_level_set("WIFI", ESP_LOG_ERROR );
     esp_log_level_set("MQTT", ESP_LOG_INFO );
-    esp_log_level_set("MENSAJES_MQTT", ESP_LOG_INFO );
-    esp_log_level_set("HTTP_FILE_SERVER", ESP_LOG_ERROR );
 }
 
 //----------------------------INTERRUPTIONS -----------------------------------
@@ -210,22 +213,24 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
 
     ESP_LOGI(TAG, "MPU task init");
     WDT_addTask(MPU_ISR);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+
     while (1) {
-        vTaskDelay(1);
         // xSemaphore_newDataOnMPU toma el semaforo principal.
         // Solo se libera si la interrupcion de nuevo dato disponible lo libera.
         // Para que la interrupcion se de, tiene que llamarse a mpu9250_ready
         if ( xSemaphoreTake(xSemaphore_newDataOnMPU, 1) != pdTRUE ){
+            vTaskDelay(1 / portTICK_PERIOD_MS);
             continue;
         }
-
-        //DEBUG_PRINT(TAG, "MPU Task Global > take semaphore");
+        TickType_t initTime = xTaskGetTickCount();
         MPU9250_t data;
         if( MPU9250_ReadAcce(&data)  != ESP_OK){
             ESP_LOGE(TAG, "MPU Task Fail getting data");
             xSemaphoreGive(xSemaphore_newDataOnMPU);
             continue;
         }
+        ESP_LOGI(TAG, "Task MPU9250 Reading >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
 
         // xSemaphore_queue toma el semaforo para que se acceda a la cola
         if(xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) == pdTRUE){
@@ -238,12 +243,85 @@ void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
             xQueueSend(MPUDataQueue, &aPacket, portMAX_DELAY);
             xSemaphoreGive(xSemaphore_MPUMutexQueue);
         }
+        ESP_LOGI(TAG, "Task MPU9250 Saving >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+
         // Avisa que el dato fue leido por lo que baja el pin de interrupcion esperando que se haga un nuevo
         // flanco ascendente
         mpu9250_ready();
         WDT_reset(MPU_ISR);
+
+        vTaskDelayUntil(&initTime, pdMS_TO_TICKS(sampleRateInMS));
     }
 }
+
+void IRAM_ATTR adc_readingTask(void *pvParameters) {
+
+    ESP_LOGI(TAG, "ADC task init");
+    WDT_addTask(ADC_ISR);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+    while (1) {
+        TickType_t initTime = xTaskGetTickCount();
+        int data = ADC_GetRaw();
+        DEBUG_PRINT_MAIN(TAG, "Task ADC Reading sample %d >>>>>>>>>>> \t %u ms",data, getTimeDiffInMs(initTime));
+
+        if(xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE){
+            DEBUG_PRINT_MAIN(TAG, "Task ADC taking semaphore >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
+
+            QueuePacket_t aPacket;
+            if( !buildDataPacketForADC(data,&aPacket) ){
+                ESP_LOGE(TAG,"Error building packet");
+                continue;
+            }
+            DEBUG_PRINT_MAIN(TAG, "Task ADC building packet >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+            xQueueSend(ADCDataQueue, &aPacket, portMAX_DELAY);
+            xSemaphoreGive(xSemaphore_ADCMutexQueue);
+        }
+        DEBUG_PRINT_MAIN(TAG, "Task ADC saving data >>>>>>>>>>> \t\t %u ms",getTimeDiffInMs(initTime));
+        WDT_reset(ADC_ISR);
+
+        vTaskDelayUntil(&initTime, pdMS_TO_TICKS(sampleRateInMS));
+    }
+}
+
+void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
+    WDT_addTask(FUSION_ISR);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+
+    while (1) {
+        TickType_t initTime = xTaskGetTickCount();
+        if( takeSensorQueueWhenSamplesAre(MIN_SAMPLES_TO_DO_FUSION)){
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion take semaphores >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
+
+            size_t mpuLength, adcLength;
+            QueuePacket_t * mpuBuffer = copyQueueToBuffer(MPUDataQueue,&mpuLength);
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion copy buffer mpu >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
+
+            QueuePacket_t * adcBuffer = copyQueueToBuffer(ADCDataQueue,&adcLength);
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion copy buffer adc >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
+
+            if( mpuBuffer == NULL || adcBuffer == NULL){
+                ESP_LOGE(TAG,"Error copying queue to buffer");
+                continue;
+            }
+            giveAllSensorSemaphores();
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion give semaphores  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+
+            if ( xSemaphoreTake(xSemaphore_SDMutexQueue, portMAX_DELAY) == pdTRUE) {
+                DEBUG_PRINT_MAIN(TAG,"Fusion data Mpu:%d y ADC:%d",mpuLength, adcLength);
+                matchSensorsSamples(mpuBuffer, adcBuffer, mpuLength, adcLength);
+                xSemaphoreGive(xSemaphore_SDMutexQueue);
+            }
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+            free(mpuBuffer);
+            free(adcBuffer);
+
+        }
+
+        WDT_reset(FUSION_ISR);
+        vTaskDelayUntil(&initTime, pdMS_TO_TICKS(sampleRateInMS));
+    }
+}
+
 //
 //void IRAM_ATTR mpu9250_calibrationTask(void *pvParameters) {
 //
@@ -289,6 +367,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
     ESP_LOGI(TAG,"SD task init");
     WDT_addTask(SD_ISR);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
 
     timeInfo_t timeInfo;
     SD_data_t sdData;
@@ -300,13 +379,14 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     DIR_getMainSampleDirectory(mainPathToSave);
 
     while (1) {
-        vTaskDelay(1);
+        TickType_t initTime = xTaskGetTickCount();
 
         if(uxQueueMessagesWaiting(SDDataQueue) > 0 ){
             if(xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
+                DEBUG_PRINT_MAIN(TAG, "Task SD save init  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
 
                 while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
-                    sdData = getSDDataFromPacket(aReceivedPacket);
+                    sdData = getSDDataFromPacket(&aReceivedPacket);
                     //DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
                     sample_change_case_t sampleTimeState = analyzeSampleTime(sdData.hour, sdData.min, sdData.seconds);
                     DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData with state %s", printSampleTimeState(sampleTimeState));
@@ -340,13 +420,18 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                     sdDataArray[sdDataCounter] = sdData;
                     sdDataCounter++;
                 }
+                DEBUG_PRINT_MAIN(TAG, "Task SD save all data >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
                 SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
                 memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
                 sdDataCounter = 0;
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
+                DEBUG_PRINT_MAIN(TAG, "Task SD finish >>>>>>>>>>> \t\t\t %u ms", getTimeDiffInMs(initTime));
+
             }
         }
         WDT_reset(SD_ISR);
+
+        vTaskDelayUntil(&initTime, pdMS_TO_TICKS(sampleRateInMS));
     }
 }
 
@@ -492,43 +577,6 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     }
 }
 
-void IRAM_ATTR adc_readingTask(void *pvParameters) {
-
-    ESP_LOGI(TAG, "ADC task init");
-    WDT_addTask(ADC_ISR);
-
-    while (1) {
-        vTaskDelay(1);
-        int data = ADC_GetRaw();
-        DEBUG_PRINT_MAIN(TAG, "ADC Task Received item %d", data);
-
-        if(xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE){
-            QueuePacket_t aPacket;
-            if( !buildDataPacketForADC(data,&aPacket) ){
-                ESP_LOGE(TAG,"Error building packet");
-                continue;
-            }
-            xQueueSend(ADCDataQueue, &aPacket, portMAX_DELAY);
-            xSemaphoreGive(xSemaphore_ADCMutexQueue);
-        }
-        WDT_reset(ADC_ISR);
-    }
-}
-
-void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
-    WDT_addTask(FUSION_ISR);
-    while (1) {
-        vTaskDelay(1);
-        takeAllSensorSemaphores();
-        UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
-        UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
-        DEBUG_PRINT_MAIN(TAG,"Fusion data Mpu:%d y ADC:%d",lenOfMPUQueue,lenOfADCQueue);
-        correlateDataAndSendToSDQueue(lenOfMPUQueue, lenOfADCQueue);
-        giveAllSensorSemaphores();
-        WDT_reset(FUSION_ISR);
-    }
-}
-
 void IRAM_ATTR time_internalTimeSync(void *pvParameters){
     ESP_LOGI(TAG, "Time sync task init");
     while (1) {
@@ -541,56 +589,83 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters){
 
 //------------------------------ UTILS -----------------------------------------
 
-void correlateDataAndSendToSDQueue(UBaseType_t lenOfMPUQueue, UBaseType_t lenOfADCQueue) {
-    QueueHandle_t longestQueue,shorterQueue;
-    if (lenOfMPUQueue > lenOfADCQueue){
-        longestQueue = MPUDataQueue;
-        shorterQueue = ADCDataQueue;
-    } else {
-        longestQueue = ADCDataQueue;
-        shorterQueue = MPUDataQueue;
-    }
+void matchSensorsSamples(QueuePacket_t *mpuBuffer, QueuePacket_t *adcBuffer, size_t mpuLength, size_t adcLength) {
+    int mpuIndex = 0;
+    int adcIndex = 0;
+    while (mpuIndex < mpuLength && adcIndex < adcLength) {
+        vTaskDelay(1);
+        QueuePacket_t  mpuPacket = mpuBuffer[mpuIndex];
+        QueuePacket_t  adcPacket = adcBuffer[adcIndex];
 
-    // Buscamos el par de elementos con la diferencia mínima de tick
-    QueuePacket_t aPacketFromShortQueue,aPacketFromLongQueue,resultPacket;
-    MPU9250_t mpuData;
-    ADC_t adcData;
-    TickType_t minDiff;
-
-    while ( uxQueueMessagesWaiting(shorterQueue) > 0 ) {
-        minDiff = portMAX_DELAY ;
-        xQueueReceive(shorterQueue, &aPacketFromShortQueue, 1);
-        if (lenOfMPUQueue > lenOfADCQueue){
-            adcData = getADCDataFromPacket(aPacketFromShortQueue);
-        } else {
-            mpuData = getMPUDataFromPacket(aPacketFromShortQueue);
-        }
-
-        while ( uxQueueMessagesWaiting(longestQueue) > 0) {
-            xQueuePeek(longestQueue, &aPacketFromLongQueue, 1);
-            TickType_t tickDiff = tickAbsDiff( aPacketFromLongQueue.tick,aPacketFromShortQueue.tick);
-
-            if (tickDiff <= minDiff ) {
-                // Si esto se repite mas de una vez, la anterior muestra se descarta pues esto indica
-                // que la segunda muestra esta mas correlacionada que la primera
-                xQueueReceive(longestQueue, &aPacketFromLongQueue, 1);
-                if (lenOfMPUQueue > lenOfADCQueue){
-                    mpuData = getMPUDataFromPacket(aPacketFromLongQueue);
-                }else{
-                    adcData = getADCDataFromPacket(aPacketFromLongQueue);
-                }
-                minDiff = tickDiff;
-            } else {
-                break;
-            }
-
-        }
         timeInfo_t timeinfo;
-        TIME_getInfoTime( &timeinfo);
-
-        buildDataPacketForSD(mpuData, adcData, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, &resultPacket);
-        xQueueSend(SDDataQueue, &resultPacket, portMAX_DELAY);
+        QueuePacket_t resultPacket;
+        DEBUG_PRINT_MAIN(TAG, "MPU tick: %d, ADC tick: %d", mpuPacket.tick, adcPacket.tick);
+        int tickDiff = mpuPacket.tick - adcPacket.tick;
+        if ( abs(tickDiff) < MIN_TICK_DIFF_TO_MATCH) {
+            MPU9250_t mpuData = getMPUDataFromPacket(&mpuPacket);
+            ADC_t adcData = getADCDataFromPacket(&adcPacket);
+            TIME_getInfoTime(&timeinfo);
+            if (buildDataPacketForSD(mpuData, adcData, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,&resultPacket)) {
+                if( xQueueSend(SDDataQueue, &resultPacket, portMAX_DELAY) == pdPASS ){
+                    DEBUG_PRINT_MAIN(TAG, "\t SD Task Sent item");
+                } else {
+                    ESP_LOGE(TAG, "Error sending packet to SD queue");
+                }
+            } else {
+                ESP_LOGE(TAG, "Error building packet ... losing samples");
+            }
+            mpuIndex++;
+            adcIndex++;
+        } else if (tickDiff > 0) {
+            DEBUG_PRINT_MAIN(TAG, "\t Fusion next adc sample...discarding sample");
+            getADCDataFromPacket(&adcPacket);
+            // if tickDiff is greater than zero, it means that the mpu sample is older than the adc sample
+            // so we need to find the adc sample that is closest to the mpu sample
+            adcIndex++;
+        } else {
+            DEBUG_PRINT_MAIN(TAG, "\t Fusion next mpu sample...discarding sample");
+            getMPUDataFromPacket(&mpuPacket);
+            // else if tickDiff is less than zero, it means that the adc sample is older than the mpu sample
+            // so we need to find the mpu sample that is closest to the adc sample
+            mpuIndex++;
+        }
     }
+}
+
+bool takeSensorQueueWhenSamplesAre(int numberOfSamples) {
+    UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
+    UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
+
+    if (lenOfMPUQueue >= numberOfSamples && lenOfADCQueue >= numberOfSamples) {
+        if (xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) == pdTRUE) {
+            if ( xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+QueuePacket_t * copyQueueToBuffer(QueueHandle_t queue, size_t * bufferLength) {
+    size_t queueLength = uxQueueMessagesWaiting(queue);
+    if (queueLength == 0){
+        DEBUG_PRINT_MAIN(TAG, "Queue is empty");
+        *bufferLength = 0;
+        return NULL;
+    }
+    QueuePacket_t * buffer = (QueuePacket_t *) malloc(queueLength * sizeof(QueuePacket_t));
+    if (buffer != NULL) {
+        QueuePacket_t packet;
+
+        for (size_t i = 0; i < queueLength; i++) {
+            if (xQueueReceive(queue, &packet, 0) == pdPASS) {
+                memcpy(&buffer[i], &packet, sizeof(QueuePacket_t));
+            }
+        }
+        *bufferLength = queueLength ;
+    }
+    DEBUG_PRINT_MAIN(TAG, "\t Buffer length copied: %d", *bufferLength);
+    return buffer;
 }
 
 esp_err_t ESP32_initQueue() {
@@ -614,46 +689,6 @@ esp_err_t ESP32_initSemaphores() {
 void giveAllSensorSemaphores() {
     xSemaphoreGive(xSemaphore_MPUMutexQueue);
     xSemaphoreGive(xSemaphore_ADCMutexQueue);
-    xSemaphoreGive(xSemaphore_SDMutexQueue);
-}
-
-void takeAllSensorSemaphores() {
-    bool bothQueueHasNewData = pdFALSE;
-    bool mpuAlreadyTaken = false;
-    bool adcAlreadyTaken = false;
-    bool sdAlreadyTaken = false;
-    while (!bothQueueHasNewData){
-        vTaskDelay(1);
-        UBaseType_t lenOfMPUQueue = uxQueueMessagesWaiting(MPUDataQueue);
-        UBaseType_t lenOfADCQueue = uxQueueMessagesWaiting(ADCDataQueue);
-
-        if( lenOfMPUQueue > 0 && lenOfADCQueue > 0 ){
-            if( !mpuAlreadyTaken ){
-                if ( xSemaphoreTake(xSemaphore_MPUMutexQueue, portMAX_DELAY) != pdTRUE){
-                    continue;
-                } else{
-                    mpuAlreadyTaken = true;
-                }
-            }
-            if( !adcAlreadyTaken ){
-                if ( xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) != pdTRUE){
-                    continue;
-                }else{
-                    adcAlreadyTaken = true;
-                }
-            }
-            if( !sdAlreadyTaken ){
-                if ( xSemaphoreTake(xSemaphore_SDMutexQueue, portMAX_DELAY) != pdTRUE){
-                    continue;
-                } else{
-                    sdAlreadyTaken = true;
-                }
-            }
-            if (mpuAlreadyTaken && adcAlreadyTaken && sdAlreadyTaken ){
-                bothQueueHasNewData = pdTRUE;
-            }
-        }
-    }
 }
 
 TickType_t tickAbsDiff(TickType_t tick1, TickType_t tick2) {
@@ -693,4 +728,9 @@ sample_change_case_t analyzeSampleTime(int hour, int min, int seconds) {
     }
 
     return changeCase;
+}
+
+TickType_t getTimeDiffInMs(TickType_t initTime) {
+    TickType_t diff = xTaskGetTickCount() - initTime;
+    return pdTICKS_TO_MS(diff);
 }
