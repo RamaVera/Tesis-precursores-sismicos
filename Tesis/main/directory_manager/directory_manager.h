@@ -21,14 +21,14 @@
 #define SAMPLE_PATH MOUNT_POINT"/samples"
 
 #define MAX_SAMPLE_PATH_LENGTH 52
-
+esp_err_t DIR_CreateDirectory(char *directoryPath);
 esp_err_t DIR_setMainSampleDirectory(int year, int month, int day);
 esp_err_t DIR_setRetrieveSampleDirectory(int year, int month, int day);
-esp_err_t DIR_CreateDirectory(char *directoryPath);
 esp_err_t DIR_getMainSampleDirectory(char * path);
 esp_err_t DIR_getRetrieveSampleDirectory(char * path);
 esp_err_t DIR_Exist(char *dirPath);
-esp_err_t DIR_ExistFile(char *dirPath,char *file);
+void DIR_updateRetrieveSampleDirectory(char *pathToRetrieve, int yearToUpdate, int montToUpdate, int dayToUpdate);
+void DIR_updateMainSampleDirectory(char *pathToRetrieve, int yearToUpdate, int montToUpdate, int dayToUpdate);
 
 
 #endif //DIR_MANAGER_H
