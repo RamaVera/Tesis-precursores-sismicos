@@ -6,10 +6,11 @@
 #define ADC_H
 
 #include "driver/adc.h"
+#include "../data_types.h"
 #include "../pinout.h"
 
 esp_err_t ADC_Init();
-int ADC_GetRaw();
+ADC_t ADC_GetRaw();
 
 
 #endif //ADC_H

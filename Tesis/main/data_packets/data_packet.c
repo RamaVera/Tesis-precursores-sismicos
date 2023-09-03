@@ -10,16 +10,18 @@ static const char *TAG = "DATA_PACKET"; // Para los mensajes de LOG
 #define DEBUG_PRINT_DATA_PACKET(tag, fmt, ...) do {} while (0)
 #endif
 
-bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate) {
-    struct ADC_t *adcData = NULL;
-    struct QueuePacket aPacket;
+bool buildDataPacketForADC(uint16_t adcX, uint16_t adcY, uint16_t adcZ, QueuePacket_t *aPacketToGenerate) {
+    ADC_t *adcData = NULL;
+    QueuePacket_t aPacket;
     adcData = (ADC_t *) (malloc(sizeof(ADC_t)));
     if( adcData == NULL){
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
     }
     DEBUG_PRINT_DATA_PACKET(TAG,"ADC Pido memoria para %p",adcData);
-    adcData->data = adcRawData;
+    adcData->adcX = adcX;
+    adcData->adcY = adcY;
+    adcData->adcZ = adcZ;
     aPacket.dataElement = adcData;
     aPacket.tick = xTaskGetTickCount();
     *aPacketToGenerate = aPacket;
@@ -30,7 +32,9 @@ bool buildDataPacketForADC(int adcRawData, struct QueuePacket *aPacketToGenerate
 ADC_t getADCDataFromPacket(QueuePacket_t *aPacket) {
     ADC_t adcRawData;
     ADC_t * adcData = (ADC_t *) aPacket->dataElement;
-    adcRawData.data = adcData->data;
+    adcRawData.adcX = adcData->adcX;
+    adcRawData.adcY = adcData->adcY;
+    adcRawData.adcZ = adcData->adcZ;
     DEBUG_PRINT_DATA_PACKET(TAG,"ADC libero memoria para %p",aPacket->dataElement);
     free(aPacket->dataElement);
     return adcRawData;

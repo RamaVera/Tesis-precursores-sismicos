@@ -41,6 +41,17 @@
 //  23      SCL / SCLK              I2C serial clock (SCL); SPI serial clock (SCLK)
 //  24      SDA / SDI               I2C serial data (SDA); SPI serial data input (SDI)
 
+
+//enum adc1_channel_t
+//ADC1 channel 0 is GPIO36
+//ADC1_CHANNEL_1 ADC1 channel 1 is GPIO37
+//ADC1_CHANNEL_2 ADC1 channel 2 is GPIO38
+//ADC1_CHANNEL_3 ADC1 channel 3 is GPIO39
+//ADC1_CHANNEL_4 ADC1 channel 4 is GPIO32
+//ADC1_CHANNEL_5 ADC1 channel 5 is GPIO33
+//ADC1_CHANNEL_6 ADC1 channel 6 is GPIO34
+//ADC1_CHANNEL_7 ADC1 channel 7 is GPIO35
+
 #define MPU_PIN_NUM_MISO_ADO 12
 #define MPU_PIN_NUM_MOSI_SDA 13
 #define MPU_PIN_NUM_CLK_SCL  14
@@ -52,6 +63,8 @@
 #define SD_PIN_NUM_CLK  18
 #define SD_PIN_NUM_CS   21
 
-#define ADC_PIN 33
+#define ADC_PIN_X 33
+#define ADC_PIN_Y 34
+#define ADC_PIN_Z 35
 
 #define BOTON_1   27

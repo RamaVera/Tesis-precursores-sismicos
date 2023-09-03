@@ -11,7 +11,7 @@ typedef struct MPU9250_t {
 } MPU9250_t;
 
 typedef struct ADC_t{
-    int data;
+    uint16_t adcX, adcY, adcZ;
 }ADC_t ;
 
 typedef struct SD_sensors_data{
