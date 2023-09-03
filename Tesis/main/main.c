@@ -18,8 +18,10 @@
 /************************************************************************
 * Variables Globales
 ************************************************************************/
-#define QUEUE_LENGTH 50
-#define QUEUE_ITEM_SIZE sizeof(QueuePacket_t)
+#define QUEUE_SAMPLE_LENGTH 50
+#define QUEUE_SAMPLE_ITEM_SIZE sizeof(QueuePacket_t)
+#define QUEUE_MQTT_LENGTH 2000
+#define QUEUE_MQTT_SAMPLE_ITEM_SIZE sizeof(SD_sensors_data_t)
 
 TaskHandle_t FUSION_ISR = NULL;
 TaskHandle_t MPU_ISR = NULL;
@@ -48,7 +50,7 @@ uint64_t sampleRateInMS = 10 * portTICK_PERIOD_MS;
 static const char *TAG = "MAIN "; // Para los mensajes del micro
 
 void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
-void IRAM_ATTR time_syncInternalTimer(void* pvParameters);
+void IRAM_ATTR time_refreshInternalTimer(void* pvParameters);
 
 void IRAM_ATTR adc_readingTask(void *pvParameters);
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
@@ -67,6 +69,8 @@ sample_change_case_t analyzeSampleTime(int hour, int min, int seconds);
 char * printSampleTimeState(sample_change_case_t state);
 void matchSensorsSamples(QueuePacket_t *mpuBuffer, QueuePacket_t *adcBuffer, size_t mpuLength, size_t adcLength);
 TickType_t getTimeDiffInMs(TickType_t initTime);
+
+void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData);
 
 void app_main(void) {
 
@@ -95,7 +99,7 @@ void app_main(void) {
                         if ( MQTT_init(mqttParams) != ESP_OK) return;
                         MQTT_subscribe(TOPIC_TO_RECEIVE_COMMANDS);
                         if ( TIME_synchronizeTimeAndDate() != ESP_OK) break;
-                        if ( TIMER_create(time_syncInternalTimer) != ESP_OK) return;
+                        if (TIMER_create(time_refreshInternalTimer) != ESP_OK) return;
 
                         TIME_getInfoTime(&timeInfo);
                         TIME_updateParams(timeInfo,params.init_year, params.init_month, params.init_day);
@@ -156,10 +160,12 @@ void app_main(void) {
 //                break;
 //            }
             case INIT_SAMPLING: {
+                // CORE 1
                 xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
                 xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 2, &FUSION_ISR,1);
 
+                // CORE 0
                 xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 6, &MQTT_RECEIVE_ISR, 0);
                 xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_ISR, 0);
                 xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 0);
@@ -200,7 +206,7 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     DEBUG_PRINT_INTERRUPT_MAIN(">>>\n");
 }
 
-void IRAM_ATTR time_syncInternalTimer(void* pvParameters){
+void IRAM_ATTR time_refreshInternalTimer(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdTRUE;
     xTaskResumeFromISR(TIME_ISR);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -261,14 +267,14 @@ void IRAM_ATTR adc_readingTask(void *pvParameters) {
     vTaskDelay(1 / portTICK_PERIOD_MS);
     while (1) {
         TickType_t initTime = xTaskGetTickCount();
-        int data = ADC_GetRaw();
-        DEBUG_PRINT_MAIN(TAG, "Task ADC Reading sample %d >>>>>>>>>>> \t %u ms",data, getTimeDiffInMs(initTime));
+        ADC_t data = ADC_GetRaw();
+        DEBUG_PRINT_MAIN(TAG, "Task ADC Reading sample X:%d Y:%d Z:%d >> \t %u ms",data.adcX,data.adcY,data.adcZ, getTimeDiffInMs(initTime));
 
         if(xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE){
             DEBUG_PRINT_MAIN(TAG, "Task ADC taking semaphore >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
 
             QueuePacket_t aPacket;
-            if( !buildDataPacketForADC(data,&aPacket) ){
+            if( !buildDataPacketForADC(data.adcY, data.adcX, data.adcZ, &aPacket)){
                 ESP_LOGE(TAG,"Error building packet");
                 continue;
             }
@@ -372,40 +378,40 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     timeInfo_t timeInfo;
     SD_data_t sdData;
     QueuePacket_t aReceivedPacket;
-    SD_data_t sdDataArray[QUEUE_LENGTH];
+    SD_data_t sdDataArray[QUEUE_SAMPLE_LENGTH];
     char mainPathToSave[MAX_SAMPLE_PATH_LENGTH];
-    int sdDataCounter = 0;
 
     DIR_getMainSampleDirectory(mainPathToSave);
 
     while (1) {
+        int sampleCounterToSave = 0;
         TickType_t initTime = xTaskGetTickCount();
 
         if(uxQueueMessagesWaiting(SDDataQueue) > 0 ){
             if(xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
                 DEBUG_PRINT_MAIN(TAG, "Task SD save init  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
 
-                while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
+                while( xQueueReceive(SDDataQueue, &aReceivedPacket, 1)){
                     sdData = getSDDataFromPacket(&aReceivedPacket);
                     //DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
                     sample_change_case_t sampleTimeState = analyzeSampleTime(sdData.hour, sdData.min, sdData.seconds);
                     DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData with state %s", printSampleTimeState(sampleTimeState));
                     switch(sampleTimeState){
                         case NEW_MINUTE:
-                            if( sdDataCounter != 0) {
-                                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
-                                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
-                                sdDataCounter = 0;
+                            if(sampleCounterToSave != 0) {
+                                SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+                                memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_data_t));
+                                sampleCounterToSave = 0;
                             }
                             SD_setSampleFilePath(sdData.hour, sdData.min);
                             break;
                         case NEW_DAY:
                             // Si existe data guardada, implica que correspondía a antes de las 00:00:00
                             // entonces se guarda en el archivo de la fecha anterior.
-                            if( sdDataCounter != 0) {
-                                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
-                                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
-                                sdDataCounter = 0;
+                            if(sampleCounterToSave != 0) {
+                                SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+                                memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_data_t));
+                                sampleCounterToSave = 0;
                             }
 
                             TIME_getInfoTime(&timeInfo);
@@ -417,13 +423,13 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                         case NO_CHANGE:
                         default: ;
                     }
-                    sdDataArray[sdDataCounter] = sdData;
-                    sdDataCounter++;
+                    sdDataArray[sampleCounterToSave] = sdData;
+                    sampleCounterToSave++;
                 }
-                DEBUG_PRINT_MAIN(TAG, "Task SD save all data >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
-                SD_writeDataArrayOnSampleFile(sdDataArray,sdDataCounter,mainPathToSave);
-                memset(sdDataArray,0,QUEUE_LENGTH * sizeof(SD_data_t));
-                sdDataCounter = 0;
+                DEBUG_PRINT_MAIN(TAG, "Task SD saving all data >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+                SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+                DEBUG_PRINT_MAIN(TAG, "Task SD saved all data >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+                memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_data_t));
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
                 DEBUG_PRINT_MAIN(TAG, "Task SD finish >>>>>>>>>>> \t\t\t %u ms", getTimeDiffInMs(initTime));
 
@@ -438,7 +444,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     ESP_LOGI(TAG,"MQTT receive command task init");
     WDT_addTask(MQTT_RECEIVE_ISR);
-    char pathToRetrieve[MAX_SAMPLE_PATH_LENGTH];
+    char directoryPathToRetrieve[MAX_SAMPLE_PATH_LENGTH];
 
     while (1) {
         vTaskDelay(1);
@@ -457,54 +463,33 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
                     int dayToGet = command.startDay;
                     int hourToGet = command.startHour;
                     int minuteToGet = command.startMinute;
-                    DIR_setRetrieveSampleDirectory(command.startYear, command.startMonth, dayToGet);
-                    DIR_getRetrieveSampleDirectory(pathToRetrieve);
-                    DEBUG_PRINT_MAIN(TAG, "Retrieve directory %s", pathToRetrieve);
-                    SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
+                    DIR_updateRetrieveSampleDirectory(directoryPathToRetrieve, command.startYear, command.startMonth, dayToGet);
 
-                    while(stillDataToRetrieve){
+                    while(!COMMAND_matchEndTime(&command, dayToGet, hourToGet, minuteToGet)){
                         vTaskDelay(1);
+
+                        SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
                         size_t totalDataRetrieved = 0;
-                        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY) == pdTRUE){
-                            DEBUG_PRINT_MAIN(TAG, "xSemaphoreTake take");
-                            SD_sensors_data_t *sdData = NULL;
-                            if(SD_getDataFromRetrieveSampleFile(pathToRetrieve, &sdData, &totalDataRetrieved) != ESP_OK){
-                                MQTT_publish(TOPIC_TO_PUBLISH_DATA, "error reading", strlen("error reading"));
-                                ESP_LOGE(TAG,"Error getting data from sample file");
-                                xSemaphoreGive(xSemaphore_MQTTMutexQueue);
-                                break;
-                            }
-                            DEBUG_PRINT_MAIN(TAG,"MQTT Task Retrieved %d data", totalDataRetrieved);
-                            for( int eachSample = 0; eachSample < totalDataRetrieved; eachSample++){
-                                if ( xQueueSend(MQTTDataQueue, &sdData[eachSample], 0) == errQUEUE_FULL){
-                                    ESP_LOGE(TAG,"Error sending data to MQTT queue on sample %d", eachSample);
-                                    xSemaphoreGive(xSemaphore_MQTTMutexQueue);
-                                    eachSample--;
-                                    vTaskDelay(1);
-                                    WDT_reset(MQTT_RECEIVE_ISR);
-                                    xSemaphoreTake(xSemaphore_MQTTMutexQueue, portMAX_DELAY);
-                                }
-                            }
-                            free(sdData);
-                            xSemaphoreGive(xSemaphore_MQTTMutexQueue);
+
+                        SD_sensors_data_t *sdData = NULL;
+                        if( SD_getDataFromRetrieveSampleFile(directoryPathToRetrieve, &sdData, &totalDataRetrieved) != ESP_OK){
+                            MQTT_publish(TOPIC_TO_PUBLISH_DATA, "error reading", strlen("error reading"));
+                            ESP_LOGE(TAG,"Error getting data from sample file");
+                            break;
                         }
-                        DEBUG_PRINT_MAIN(TAG, "Checking time");
-                        if( dayToGet == command.endDay && hourToGet == command.endHour && minuteToGet == command.endMinute){
-                            stillDataToRetrieve = false;
-                        } else {
-                            minuteToGet++;
-                            if(minuteToGet == 60){
-                                minuteToGet = 0;
-                                hourToGet++;
-                                if( hourToGet == 24){
-                                    hourToGet = 0;
-                                    dayToGet++;
-                                    DIR_setRetrieveSampleDirectory(command.startYear, command.startMonth, dayToGet);
-                                    DIR_getRetrieveSampleDirectory(pathToRetrieve);
-                                }
-                            
+
+                        pushSDDataToMQTTQueueRoutine(totalDataRetrieved, sdData);
+                        free(sdData);
+
+                        minuteToGet++;
+                        if(minuteToGet == 60){
+                            minuteToGet = 0;
+                            hourToGet++;
+                            if( hourToGet == 24){
+                                hourToGet = 0;
+                                dayToGet++;
+                                DIR_updateRetrieveSampleDirectory(directoryPathToRetrieve, command.startYear, command.startMonth, dayToGet);
                             }
-                            SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
                         }
                     }
                     DEBUG_PRINT_MAIN(TAG,"MQTT Task Finished retrieving data");
@@ -518,6 +503,8 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     }
 }
 
+
+
 #define MAX_CHARS_PER_UINT8  3   // Estimación generosa para uint8_t (hasta 3 dígitos)
 #define MAX_CHARS_PER_INT    12  // Estimación generosa para int (hasta 11 dígitos y signo)
 #define NEW_LINE              1   //  carácter de nueva línea
@@ -530,17 +517,18 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     char dataToSend[MAX_CHARS_PER_SAMPLE];
     char counterStr[10];
     char maxDataToSend[MAX_CHARS_PER_SAMPLE*100];
-    size_t counter = 0;
+
 
     while (1) {
         vTaskDelay(1);
         if(uxQueueMessagesWaiting(MQTTDataQueue) > 0 ){
+            size_t counter = 0;
             if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
                 while (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
-                    DEBUG_PRINT_MAIN(TAG, "MQTT Task Received item");
+                    vTaskDelay(1);
                     counter++;
                     memset(dataToSend, 0, sizeof(dataToSend));
-                    sprintf(dataToSend,"%u%u%u%u%u%u%d\n",
+                    sprintf(dataToSend,"%02x%02x%02x%02x%02x%02x%d\n",
                             item.mpuData.AxH,
                             item.mpuData.AxL,
                             item.mpuData.AyH,
@@ -556,16 +544,6 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
                         break;
                     }
                     WDT_reset(MQTT_PUBLISH_ISR);
-//                    cJSON *jsonData;
-//                    jsonData = cJSON_CreateObject();
-//                    cJSON_AddNumberToObject(jsonData, "num", counter++);
-//                    cJSON_AddNumberToObject(jsonData, "accel_x", item.mpuData.Ax);
-//                    cJSON_AddNumberToObject(jsonData, "accel_y", item.mpuData.Ay);
-//                    cJSON_AddNumberToObject(jsonData, "accel_z", item.mpuData.Az);
-//                    cJSON_AddNumberToObject(jsonData, "adc", item.adcData.data);
-//                    char * rendered;
-//                    rendered = cJSON_Print(jsonData);
-//                    cJSON_Delete(jsonData);
                 }
                 xSemaphoreGive(xSemaphore_MQTTMutexQueue);
                 MQTT_publish(TOPIC_TO_PUBLISH_DATA, maxDataToSend, strlen(maxDataToSend));
@@ -588,6 +566,45 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters){
 
 
 //------------------------------ UTILS -----------------------------------------
+
+esp_err_t ESP32_initQueue() {
+    SDDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, QUEUE_SAMPLE_ITEM_SIZE);  if(SDDataQueue == NULL) return ESP_FAIL;
+    MQTTDataQueue = xQueueCreate(QUEUE_MQTT_LENGTH, QUEUE_MQTT_SAMPLE_ITEM_SIZE);if(MQTTDataQueue == NULL) return ESP_FAIL;
+    ADCDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, QUEUE_SAMPLE_ITEM_SIZE); if(ADCDataQueue == NULL) return ESP_FAIL;
+    MPUDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, QUEUE_SAMPLE_ITEM_SIZE); if(MPUDataQueue == NULL) return ESP_FAIL;
+    return ESP_OK;
+}
+
+esp_err_t ESP32_initSemaphores() {
+    xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
+    xSemaphore_MPUMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPUMutexQueue == NULL )  return ESP_FAIL;
+    xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
+    xSemaphore_ADCMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_ADCMutexQueue == NULL )  return ESP_FAIL;
+    xSemaphore_SDMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_SDMutexQueue == NULL )  return ESP_FAIL;
+    return ESP_OK;
+}
+
+void giveAllSensorSemaphores() {
+    xSemaphoreGive(xSemaphore_MPUMutexQueue);
+    xSemaphoreGive(xSemaphore_ADCMutexQueue);
+}
+
+char * printSampleTimeState(sample_change_case_t state) {
+    switch (state) {
+        case NEW_MINUTE: return "NEW_MINUTE";
+        case NEW_DAY: return "NEW_DAY";
+        case NO_CHANGE: return "NO_CHANGE";
+        default:
+            ESP_LOGE(TAG, "UNKNOWN STATE for sample");
+            return "UNKNOWN";
+    }
+}
+
+TickType_t getTimeDiffInMs(TickType_t initTime) {
+    TickType_t diff = xTaskGetTickCount() - initTime;
+    return pdTICKS_TO_MS(diff);
+}
+
 
 void matchSensorsSamples(QueuePacket_t *mpuBuffer, QueuePacket_t *adcBuffer, size_t mpuLength, size_t adcLength) {
     int mpuIndex = 0;
@@ -668,48 +685,6 @@ QueuePacket_t * copyQueueToBuffer(QueueHandle_t queue, size_t * bufferLength) {
     return buffer;
 }
 
-esp_err_t ESP32_initQueue() {
-    SDDataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);  if( SDDataQueue     == NULL) return ESP_FAIL;
-    MQTTDataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE);if( MQTTDataQueue   == NULL) return ESP_FAIL;
-    ADCDataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE); if( ADCDataQueue    == NULL) return ESP_FAIL;
-    MPUDataQueue = xQueueCreate(QUEUE_LENGTH, QUEUE_ITEM_SIZE); if( MPUDataQueue    == NULL) return ESP_FAIL;
-    return ESP_OK;
-}
-
-esp_err_t ESP32_initSemaphores() {
-    xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
-    xSemaphore_MPUMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPUMutexQueue == NULL )  return ESP_FAIL;
-    xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
-    xSemaphore_ADCMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_ADCMutexQueue == NULL )  return ESP_FAIL;
-    xSemaphore_SDMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_SDMutexQueue == NULL )  return ESP_FAIL;
-
-    return ESP_OK;
-}
-
-void giveAllSensorSemaphores() {
-    xSemaphoreGive(xSemaphore_MPUMutexQueue);
-    xSemaphoreGive(xSemaphore_ADCMutexQueue);
-}
-
-TickType_t tickAbsDiff(TickType_t tick1, TickType_t tick2) {
-    if (tick1 >= tick2) {
-        return tick1 - tick2;
-    } else {
-        return tick2 - tick1;
-    }
-}
-
-char * printSampleTimeState(sample_change_case_t state) {
-    switch (state) {
-        case NEW_MINUTE: return "NEW_MINUTE";
-        case NEW_DAY: return "NEW_DAY";
-        case NO_CHANGE: return "NO_CHANGE";
-        default:
-            ESP_LOGE(TAG, "UNKNOWN STATE for sample");
-            return "UNKNOWN";
-    }
-}
-
 sample_change_case_t analyzeSampleTime(int hour, int min, int seconds) {
     sample_change_case_t changeCase = NO_CHANGE;
     static int lastMinute = -1;
@@ -730,7 +705,20 @@ sample_change_case_t analyzeSampleTime(int hour, int min, int seconds) {
     return changeCase;
 }
 
-TickType_t getTimeDiffInMs(TickType_t initTime) {
-    TickType_t diff = xTaskGetTickCount() - initTime;
-    return pdTICKS_TO_MS(diff);
+void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData) {
+    int sampleSent = 0;
+    while(sampleSent != totalDataRetrieved){
+        if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 5) == pdTRUE){
+            while(sampleSent < totalDataRetrieved){
+                vTaskDelay(1);
+                if ( xQueueSend(MQTTDataQueue, &sdData[sampleSent], 0) == errQUEUE_FULL){
+                    ESP_LOGE(TAG,"Error sending data to MQTT queue on sample %d", sampleSent);
+                    break;
+                }
+                sampleSent++;
+                WDT_reset(MQTT_RECEIVE_ISR);
+            }
+            xSemaphoreGive(xSemaphore_MQTTMutexQueue);
+        }
+    }
 }
