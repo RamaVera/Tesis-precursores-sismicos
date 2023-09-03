@@ -31,7 +31,6 @@ static char *const COMMAND_HEADER_TO_RETRIEVE_DATA = "R";
 
 esp_err_t COMMAND_Parse(char *rawCommand,command_t *commandParsed);
 char *COMMAND_GetHeaderType(command_t aCommand);
-
-
+bool COMMAND_matchEndTime(command_t *command, int dayToGet, int hourToGet, int minuteToGet);
 
 #endif //COMMAND_H

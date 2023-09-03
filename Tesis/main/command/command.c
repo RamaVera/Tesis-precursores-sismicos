@@ -63,3 +63,5 @@ char * COMMAND_GetHeaderType(command_t aCommand) {
 
     }
 }
+
+bool COMMAND_matchEndTime(command_t *command, int dayToGet, int hourToGet, int minuteToGet) { return dayToGet == (*command).endDay && hourToGet == (*command).endHour && minuteToGet == (*command).endMinute; }
