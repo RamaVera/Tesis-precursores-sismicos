@@ -3,7 +3,7 @@
 
 static const char *TAG = "MPU9250"; // Para los mensajes de LOG
 
-static MPU9250_t Offset = {0,0,0};
+//static MPU9250_t Offset = {0,0,0};
 
 spi_device_handle_t spi_mpu;
 
@@ -128,21 +128,14 @@ esp_err_t mpu9250_start(void)
 
 esp_err_t MPU9250_ReadAcce(MPU9250_t * sampleOfMPU) {
     uint8_t data[6];
-    int16_t axRaw,ayRaw,azRaw;
 
     if( mpu9250_readn(ACCEL_XOUT_H,data,6)  != ESP_OK){
         return ESP_FAIL;
     }
-    sampleOfMPU->AxH = data[0];
-    sampleOfMPU->AxL = data[1];
-    sampleOfMPU->AyH = data[2];
-    sampleOfMPU->AyL = data[3];
-    sampleOfMPU->AzH = data[4];
-    sampleOfMPU->AzL = data[5];
-//    /* Read accelerometer data */
-//    axRaw = ((int16_t)data[0] << 8) | data[1];
-//    ayRaw = ((int16_t)data[2] << 8) | data[3];
-//    azRaw = ((int16_t)data[4] << 8) | data[5];
+
+    sampleOfMPU->accelX = ((int16_t)data[0] << 8) | data[1];
+    sampleOfMPU->accelY = ((int16_t)data[2] << 8) | data[3];
+    sampleOfMPU->accelZ = ((int16_t)data[4] << 8) | data[5];
 //
 //    float AMult = 2.0f / 32768.0f;
 //

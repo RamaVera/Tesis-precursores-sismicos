@@ -40,22 +40,19 @@ ADC_t getADCDataFromPacket(QueuePacket_t *aPacket) {
     return adcRawData;
 }
 
-bool buildDataPacketForMPU(MPU9250_t dataToPack, struct QueuePacket *aPacketToGenerate) {
-    struct MPU9250_t *mpu9250data = NULL;
-    struct QueuePacket aPacket;
-    mpu9250data = (struct MPU9250_t *) (malloc(sizeof(struct MPU9250_t)));
+bool buildDataPacketForMPU(MPU9250_t dataToPack, QueuePacket_t *aPacketToGenerate) {
+    MPU9250_t *mpu9250data = NULL;
+    QueuePacket_t aPacket;
+    mpu9250data = (MPU9250_t *) (malloc(sizeof(MPU9250_t)));
     if( mpu9250data == NULL) {
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
     }
     DEBUG_PRINT_DATA_PACKET(TAG,"MPU Pido memoria para %p",mpu9250data);
 
-    mpu9250data->AxH = dataToPack.AxH;
-    mpu9250data->AyH = dataToPack.AyH;
-    mpu9250data->AzH = dataToPack.AzH;
-    mpu9250data->AxL = dataToPack.AxL;
-    mpu9250data->AyL = dataToPack.AyL;
-    mpu9250data->AzL = dataToPack.AzL;
+    mpu9250data->accelX = dataToPack.accelX;
+    mpu9250data->accelY = dataToPack.accelY;
+    mpu9250data->accelZ = dataToPack.accelZ;
 
     aPacket.dataElement = mpu9250data;
     aPacket.tick = xTaskGetTickCount();
@@ -67,12 +64,10 @@ bool buildDataPacketForMPU(MPU9250_t dataToPack, struct QueuePacket *aPacketToGe
 MPU9250_t getMPUDataFromPacket(QueuePacket_t *aPacket) {
     MPU9250_t mpuRawData;
     MPU9250_t * mpuData = (MPU9250_t *) aPacket->dataElement;
-    mpuRawData.AxH = mpuData->AxH;
-    mpuRawData.AyH = mpuData->AyH;
-    mpuRawData.AzH = mpuData->AzH;
-    mpuRawData.AxL = mpuData->AxL;
-    mpuRawData.AyL = mpuData->AyL;
-    mpuRawData.AzL = mpuData->AzL;
+    mpuRawData.accelX = mpuData->accelX;
+    mpuRawData.accelY = mpuData->accelY;
+    mpuRawData.accelZ = mpuData->accelZ;
+
     DEBUG_PRINT_DATA_PACKET(TAG,"MPU libero memoria para %p",aPacket->dataElement);
     free(aPacket->dataElement);
 
