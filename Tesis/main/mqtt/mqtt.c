@@ -34,11 +34,11 @@ void MQTT_subscribe(const char * topic){
 /*******************************************************************************
  MQTT_publish(): publica mensaje en el topic especificado.
 *******************************************************************************/
-void MQTT_publish(const char * topic, const char * mensaje,int len) {
+void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
 
   /* CON PUBLISH *********************************************************
   esp_mqtt_client_publish(client, topic, data, len, qos, retain) */
-  esp_mqtt_client_publish(client, topic, mensaje, len, 0, 0);
+  esp_mqtt_client_publish(client, topic, mensaje, (int)len, 0, 0);
 
   /* CON ENQUEUE ********************************************************
   esp_mqtt_client_enqueue(client, topic, data, len, qos, retain, store);

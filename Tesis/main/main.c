@@ -69,8 +69,7 @@ sample_change_case_t analyzeSampleTime(int hour, int min, int seconds);
 char * printSampleTimeState(sample_change_case_t state);
 void matchSensorsSamples(QueuePacket_t *mpuBuffer, QueuePacket_t *adcBuffer, size_t mpuLength, size_t adcLength);
 TickType_t getTimeDiffInMs(TickType_t initTime);
-
-void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData);
+void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData, int minute, int hour);
 
 void app_main(void) {
 
@@ -271,8 +270,6 @@ void IRAM_ATTR adc_readingTask(void *pvParameters) {
         DEBUG_PRINT_MAIN(TAG, "Task ADC Reading sample X:%d Y:%d Z:%d >> \t %u ms",data.adcX,data.adcY,data.adcZ, getTimeDiffInMs(initTime));
 
         if(xSemaphoreTake(xSemaphore_ADCMutexQueue, portMAX_DELAY) == pdTRUE){
-            DEBUG_PRINT_MAIN(TAG, "Task ADC taking semaphore >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
-
             QueuePacket_t aPacket;
             if( !buildDataPacketForADC(data.adcY, data.adcX, data.adcZ, &aPacket)){
                 ESP_LOGE(TAG,"Error building packet");
@@ -310,14 +307,14 @@ void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter){
                 continue;
             }
             giveAllSensorSemaphores();
-            DEBUG_PRINT_MAIN(TAG, "Task Fusion give semaphores  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion give semaphores  >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
 
             if ( xSemaphoreTake(xSemaphore_SDMutexQueue, portMAX_DELAY) == pdTRUE) {
                 DEBUG_PRINT_MAIN(TAG,"Fusion data Mpu:%d y ADC:%d",mpuLength, adcLength);
                 matchSensorsSamples(mpuBuffer, adcBuffer, mpuLength, adcLength);
                 xSemaphoreGive(xSemaphore_SDMutexQueue);
             }
-            DEBUG_PRINT_MAIN(TAG, "Task Fusion  >>>>>>>>>>> \t\t %u ms", getTimeDiffInMs(initTime));
+            DEBUG_PRINT_MAIN(TAG, "Task Fusion  >>>>>>>>>>> \t %u ms", getTimeDiffInMs(initTime));
             free(mpuBuffer);
             free(adcBuffer);
 
@@ -415,8 +412,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                             }
 
                             TIME_getInfoTime(&timeInfo);
-                            DIR_setMainSampleDirectory( timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
-                            DIR_getMainSampleDirectory(mainPathToSave);
+                            DIR_updateMainSampleDirectory(mainPathToSave, timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
                             SD_setSampleFilePath(sdData.hour, sdData.min);
                             break;
 
@@ -459,7 +455,6 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
             DEBUG_PRINT_MAIN(TAG, "MQTT Task Received command %s", COMMAND_GetHeaderType(command));
             switch ( command.header) {
                 case RETRIEVE_DATA:{
-                    bool stillDataToRetrieve = true;
                     int dayToGet = command.startDay;
                     int hourToGet = command.startHour;
                     int minuteToGet = command.startMinute;
@@ -478,7 +473,7 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
                             break;
                         }
 
-                        pushSDDataToMQTTQueueRoutine(totalDataRetrieved, sdData);
+                        pushSDDataToMQTTQueueRoutine(totalDataRetrieved, sdData, minuteToGet, dayToGet);
                         free(sdData);
 
                         minuteToGet++;
@@ -503,52 +498,60 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
     }
 }
 
-
-
-#define MAX_CHARS_PER_UINT8  3   // Estimación generosa para uint8_t (hasta 3 dígitos)
-#define MAX_CHARS_PER_INT    12  // Estimación generosa para int (hasta 11 dígitos y signo)
-#define NEW_LINE              1   //  carácter de nueva línea
-#define MAX_CHARS_PER_SAMPLE (MAX_CHARS_PER_UINT8 * 6 + MAX_CHARS_PER_INT * 1 + NEW_LINE)
-
 void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
     ESP_LOGI(TAG,"WIFI publish task init");
     WDT_addTask(MQTT_PUBLISH_ISR);
-    SD_sensors_data_t item;
+    SD_data_t item;
     char dataToSend[MAX_CHARS_PER_SAMPLE];
-    char counterStr[10];
+    char timeHeader[MAX_CHARS_PER_SAMPLE];
     char maxDataToSend[MAX_CHARS_PER_SAMPLE*100];
 
-
+    int lastMinute = -1, lastHour = -1;
     while (1) {
         vTaskDelay(1);
         if(uxQueueMessagesWaiting(MQTTDataQueue) > 0 ){
-            size_t counter = 0;
             if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
-                while (xQueueReceive(MQTTDataQueue, &item, 0) == pdTRUE){
+                MQTT_publish(TOPIC_TO_PUBLISH_DATA, "Start Sending", 13);
+                while (uxQueueMessagesWaiting(MQTTDataQueue) != 0){
                     vTaskDelay(1);
-                    counter++;
+                    if( xQueueReceive(MQTTDataQueue, &item, 0) != pdTRUE){
+                        DEBUG_PRINT_MAIN(TAG, "Error receiving data from queue");
+                        break;
+                    }
+
+                    if (lastMinute != item.min || lastHour != item.hour){
+                        if (strlen(maxDataToSend) > 0){
+                            MQTT_publish(TOPIC_TO_PUBLISH_DATA, maxDataToSend, strlen(maxDataToSend));
+                            memset(maxDataToSend, 0, sizeof(maxDataToSend));
+                        }
+                        lastMinute = item.min;
+                        lastHour = item.hour;
+                        sprintf(timeHeader,"-----------%02d:%02d---------", lastHour, lastMinute);
+                        MQTT_publish(TOPIC_TO_PUBLISH_DATA, timeHeader, strlen(timeHeader));
+                    }
+
                     memset(dataToSend, 0, sizeof(dataToSend));
-                    sprintf(dataToSend,"%02x%02x%02x%02x%02x%02x%d\n",
-                            item.mpuData.AxH,
-                            item.mpuData.AxL,
-                            item.mpuData.AyH,
-                            item.mpuData.AyL,
-                            item.mpuData.AzL,
-                            item.mpuData.AzH,
-                            item.adcData.data);
-                    strcat(maxDataToSend, dataToSend);
+                    sprintf(dataToSend,"%04x%04x%04x%04x%04x%04x\n",
+                            item.sensorsData.mpuData.accelX,
+                            item.sensorsData.mpuData.accelY,
+                            item.sensorsData.mpuData.accelZ,
+                            item.sensorsData.adcData.adcX,
+                            item.sensorsData.adcData.adcY,
+                            item.sensorsData.adcData.adcZ);
+
 
                     if (strlen(maxDataToSend) + strlen(dataToSend) > MAX_CHARS_PER_SAMPLE*100){
-                        sprintf(counterStr,"%d-", counter);
-                        strcat(counterStr, maxDataToSend);
-                        break;
+                        MQTT_publish(TOPIC_TO_PUBLISH_DATA, maxDataToSend, strlen(maxDataToSend));
+                        memset(maxDataToSend, 0, sizeof(maxDataToSend));
+                    } else{
+                        strcat(maxDataToSend, dataToSend);
                     }
                     WDT_reset(MQTT_PUBLISH_ISR);
                 }
                 xSemaphoreGive(xSemaphore_MQTTMutexQueue);
                 MQTT_publish(TOPIC_TO_PUBLISH_DATA, maxDataToSend, strlen(maxDataToSend));
                 memset(maxDataToSend, 0, sizeof(maxDataToSend));
-                counter = 1;
+                MQTT_publish(TOPIC_TO_PUBLISH_DATA, "Finish Sending", 14);
             }
         }
         WDT_reset(MQTT_PUBLISH_ISR);
@@ -705,13 +708,17 @@ sample_change_case_t analyzeSampleTime(int hour, int min, int seconds) {
     return changeCase;
 }
 
-void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData) {
+void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_sensors_data_t *sdData, int minute, int hour) {
     int sampleSent = 0;
     while(sampleSent != totalDataRetrieved){
         if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 5) == pdTRUE){
             while(sampleSent < totalDataRetrieved){
                 vTaskDelay(1);
-                if ( xQueueSend(MQTTDataQueue, &sdData[sampleSent], 0) == errQUEUE_FULL){
+                SD_data_t aSDdataToSend;
+                memcpy(&aSDdataToSend.sensorsData, &sdData[sampleSent], sizeof(SD_sensors_data_t));
+                aSDdataToSend.hour = hour;
+                aSDdataToSend.min = minute;
+                if ( xQueueSend(MQTTDataQueue, &aSDdataToSend, 0) == errQUEUE_FULL){
                     ESP_LOGE(TAG,"Error sending data to MQTT queue on sample %d", sampleSent);
                     break;
                 }

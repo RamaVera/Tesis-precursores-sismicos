@@ -14,8 +14,6 @@
 #include "esp_err.h"
 #include "esp_vfs_fat.h"
 #include "mqtt_client.h"
-#include "cJSON.h"
-
 
 #include "sd_card/sd_card.h"
 #include "mpu_9250/mpu9250.h"
@@ -29,7 +27,7 @@
 #include "time_manager/time_manager.h"
 #include "command/command.h"
 
-
+#define MAX_CHARS_PER_SAMPLE (25 + 1)
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
 #define MIN_SAMPLES_TO_DO_FUSION 10
@@ -73,8 +71,6 @@ const char * statusAsString[] = { "START_CONFIG",
 */
 void defineLogLevels();
 void printStatus(status_t nextStatus);
-
-TickType_t tickAbsDiff(TickType_t tick1, TickType_t tick2);
 
 esp_err_t ESP32_initSemaphores();
 esp_err_t ESP32_initQueue();

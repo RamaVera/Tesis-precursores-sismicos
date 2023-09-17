@@ -35,7 +35,7 @@ bool MQTT_HasCommandToProcess(void);
 void MQTT_GetCommand(char *rawCommand);
 void MQTT_processTopic(const char * , const char * );
 void MQTT_subscribe(const char * );
-void MQTT_publish(const char * , const char * ,int);
+void MQTT_publish(const char *topic, const char *mensaje, unsigned int len);
 /* Definiciones */
 esp_err_t MQTT_parseParams(char *broker, char *port, char *user, char *password, mqttParams_t *mqttParams);
 
