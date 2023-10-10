@@ -29,7 +29,7 @@ bool buildDataPacketForMPU(MPU9250_t dataToPack, QueuePacket_t *aPacketToGenerat
 MPU9250_t getMPUDataFromPacket(QueuePacket_t *aPacket);
 
 bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int min, int sec, QueuePacket_t *aPacketToGenerate);
-SD_data_t getSDDataFromPacket(QueuePacket_t *aPacket);
+SD_time_t getSDDataFromPacket(QueuePacket_t *aPacket);
 
 /*****************************************************************************
 * Definiciones

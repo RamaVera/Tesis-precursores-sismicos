@@ -3,7 +3,7 @@
 
 static const char *TAG = "DATA_PACKET"; // Para los mensajes de LOG
 
-//#define DEBUG_DATA_PACKET
+#define DEBUG_DATA_PACKET
 #ifdef DEBUG_DATA_PACKET
 #define DEBUG_PRINT_DATA_PACKET(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
@@ -75,9 +75,9 @@ MPU9250_t getMPUDataFromPacket(QueuePacket_t *aPacket) {
 }
 
 bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int min, int sec, QueuePacket_t *aPacketToGenerate) {
-    SD_data_t *SDdata = NULL;
+    SD_time_t *SDdata = NULL;
     QueuePacket_t aPacket;
-    SDdata = (SD_data_t *) (malloc(sizeof(SD_data_t)) );
+    SDdata = (SD_time_t *) (malloc(sizeof(SD_time_t)) );
     if( SDdata == NULL){
         ESP_LOGE(TAG,"NOT ENOUGH MEMORY");
         return false;
@@ -96,9 +96,9 @@ bool buildDataPacketForSD(MPU9250_t mpuRawData, ADC_t adcRawData, int hour, int 
     return true;
 }
 
-SD_data_t getSDDataFromPacket(QueuePacket_t *aPacket) {
-    SD_data_t SDRawData;
-    SD_data_t * SDData = (SD_data_t *) aPacket->dataElement;
+SD_time_t getSDDataFromPacket(QueuePacket_t *aPacket) {
+    SD_time_t SDRawData;
+    SD_time_t * SDData = (SD_time_t *) aPacket->dataElement;
     SDRawData.sensorsData.mpuData = SDData->sensorsData.mpuData;
     SDRawData.sensorsData.adcData = SDData->sensorsData.adcData;
     SDRawData.hour = SDData->hour;
