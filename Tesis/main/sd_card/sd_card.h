@@ -48,9 +48,9 @@ static const int MAX_LINE_SIZE = 500;
 *****************************************************************************/
 
 esp_err_t SD_init(void);
-esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *pathToSave);
+esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *pathToSave);
 
-esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data_t **dataToRetrieve, size_t *totalDataRetrieved);
+esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_t **dataToRetrieve, size_t *totalDataRetrieved);
 
 esp_err_t SD_getConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
