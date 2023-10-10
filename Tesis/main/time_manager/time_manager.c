@@ -8,8 +8,8 @@ static const char *TAG = "TIME ";
 
 TimerHandle_t timerHandle;
 
-esp_err_t TIMER_create(TimerCallbackFunction_t interruptToCallEveryTimelapse) {
-    timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(TIMER_PERIOD_MS), pdTRUE, NULL, interruptToCallEveryTimelapse);
+esp_err_t TIMER_create(int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse) {
+    timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(periodInMS), pdTRUE, NULL, interruptToCallEveryTimelapse);
     if (timerHandle == NULL) {
         return ESP_FAIL;
     }
@@ -53,8 +53,25 @@ esp_err_t TIME_synchronizeTimeAndDate() {
 timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo) {
     time_t now = 0;
     time(&now);
-    localtime_r(&now, timeInfo);
-    return (*timeInfo);
+    struct tm tm_time;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    localtime_r(&now, &tm_time);
+
+    // Copia los valores a tu propia estructura timeInfo_t
+    timeInfo->tm_sec = tm_time.tm_sec;
+    timeInfo->tm_min = tm_time.tm_min;
+    timeInfo->tm_hour = tm_time.tm_hour;
+    timeInfo->tm_mday = tm_time.tm_mday;
+    timeInfo->tm_mon = tm_time.tm_mon;
+    timeInfo->tm_year = tm_time.tm_year;
+    timeInfo->tm_wday = tm_time.tm_wday;
+    timeInfo->tm_yday = tm_time.tm_yday;
+    timeInfo->tm_isdst = tm_time.tm_isdst;
+    timeInfo->milliseconds = tv.tv_usec / 1000;
+
+    return *timeInfo;
 }
 
 void TIME_printTimeNow(void) {
@@ -64,7 +81,20 @@ void TIME_printTimeNow(void) {
 }
 
 void TIME_printTimeAndDate(timeInfo_t *timeInfo) {
-    ESP_LOGI(TAG, "Actual Time is: %s", asctime(timeInfo));
+    struct tm tm_time;
+
+    // Copia los valores relevantes de timeInfo a tm_time
+    tm_time.tm_sec = timeInfo->tm_sec;
+    tm_time.tm_min = timeInfo->tm_min;
+    tm_time.tm_hour = timeInfo->tm_hour;
+    tm_time.tm_mday = timeInfo->tm_mday;
+    tm_time.tm_mon = timeInfo->tm_mon;
+    tm_time.tm_year = timeInfo->tm_year;
+    tm_time.tm_wday = timeInfo->tm_wday;
+    tm_time.tm_yday = timeInfo->tm_yday;
+    tm_time.tm_isdst = timeInfo->tm_isdst;
+
+    ESP_LOGI(TAG, "Actual Time is: %s", asctime(&tm_time));
 }
 
 esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo) {

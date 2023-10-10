@@ -8,6 +8,8 @@ static const char *TAG = "MPU9250"; // Para los mensajes de LOG
 spi_device_handle_t spi_mpu;
 
 esp_err_t MPU9250_init(void) {
+    esp_log_level_set(TAG, ESP_LOG_VERBOSE);
+
     esp_err_t ret;
     spi_bus_config_t buscfg = {
             .miso_io_num = MPU_PIN_NUM_MISO_ADO,

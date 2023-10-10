@@ -22,6 +22,8 @@ char fileToRetrieveSamples[MAX_LINE_LENGTH];
 sdmmc_card_t *card;
 
 esp_err_t SD_init(void){
+    esp_log_level_set(TAG, ESP_LOG_VERBOSE );
+
     // Options for mounting the filesystem.
     // If format_if_mount_failed is set to true, SD card will be partitioned and
     // formatted in case when mounting fails.
@@ -80,15 +82,15 @@ esp_err_t SD_init(void){
     return ESP_OK;
 }
 
-esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *pathToSave) {
-    SD_sensors_data_t * sensorsData = (SD_sensors_data_t *) malloc(sizeof (SD_sensors_data_t)*len);
+esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *pathToSave) {
+    SD_t * sensorsData = (SD_t *) malloc(sizeof (SD_t) * len);
     if (sensorsData == NULL){
         ESP_LOGE(TAG, "Failed to allocate memory for sensorsData");
         return ESP_FAIL;
     }
 
     for( int i=0;i<len;i++){
-        memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_sensors_data_t));
+        memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_t));
     }
 
     char path[MAX_LINE_LENGTH*2];
@@ -100,14 +102,14 @@ esp_err_t SD_writeDataArrayOnSampleFile(SD_data_t dataToSave[], int len, char *p
         ESP_LOGE(TAG, "Failed to open file for writing");
         return ESP_FAIL;
     }
-    fwrite(sensorsData,sizeof (SD_sensors_data_t),len,f);
+    fwrite(sensorsData, sizeof (SD_t), len, f);
 
     fclose(f);
     free(sensorsData);
     return ESP_OK;
 }
 
-esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data_t **dataToRetrieve, size_t *totalDataRetrieved) {
+esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_t **dataToRetrieve, size_t *totalDataRetrieved) {
     char path[MAX_LINE_LENGTH*2];
     sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
     DEBUG_PRINT_SD(TAG,"%s",path);
@@ -122,7 +124,7 @@ esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data
     fseek(file, 0, SEEK_SET);
 
     // Calcular la cantidad de elementos a leer
-    size_t elementSize = sizeof(SD_sensors_data_t);
+    size_t elementSize = sizeof(SD_t);
     size_t numElements = fileSize / elementSize;
     *totalDataRetrieved = numElements;
     DEBUG_PRINT_SD(TAG,"Number of elements to retrieve %d",numElements);
@@ -131,7 +133,7 @@ esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_sensors_data
         return ESP_FAIL;
     }
 
-    SD_sensors_data_t *dataToRetrieveAux = (SD_sensors_data_t*) malloc(elementSize*numElements);
+    SD_t *dataToRetrieveAux = (SD_t*) malloc(elementSize * numElements);
     if (dataToRetrieveAux == NULL) {
         ESP_LOGE(TAG, "Error allocating memory");
         return ESP_FAIL;

@@ -84,6 +84,7 @@ void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
 
 
 esp_err_t MQTT_init(mqttParams_t mqttParam) {
+    esp_log_level_set(TAG, ESP_LOG_VERBOSE );
 
     esp_mqtt_client_config_t mqtt_cfg = {
             .host = mqttParam.ip_broker,

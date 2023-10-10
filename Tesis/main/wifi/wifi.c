@@ -67,7 +67,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 }
 
 esp_err_t WIFI_init(wifiParams_t wifiParams) {
-
+    esp_log_level_set("WIFI", ESP_LOG_VERBOSE );
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
