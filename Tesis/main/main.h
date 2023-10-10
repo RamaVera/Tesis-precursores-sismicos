@@ -31,6 +31,7 @@
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
 #define MIN_SAMPLES_TO_DO_FUSION 10
+#define MIN_SAMPLES_TO_SAVE 10
 #define MIN_TICK_DIFF_TO_MATCH 5
 
 typedef enum status_t{
