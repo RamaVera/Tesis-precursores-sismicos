@@ -34,31 +34,35 @@
 #define MIN_SAMPLES_TO_SAVE 10
 #define MIN_TICK_DIFF_TO_MATCH 5
 
+
+
+const char * statusAsString[] = {
+		                 "INIT_CONFIG",
+                         "INIT_WITH_WIFI",
+                         "INIT_WITHOUT_WIFI",
+                         "INIT_GLOBAL_TIME",
+                         "INIT_SENSORS",
+                         "WAITING_TO_INIT",
+                         "INIT_SAMPLING",
+		                 "DONE",
+		                 "ERROR"};
 typedef enum status_t{
-    INIT_CONFIG,
-    INIT_SENSORS,
-    WAITING_TO_INIT,
-    CALIBRATION,
-    INIT_SAMPLING,
-    DONE,
-    ERROR,
+	INIT_CONFIG,
+	INIT_WITH_WIFI,
+	INIT_WITHOUT_WIFI,
+	INIT_GLOBAL_TIME,
+	INIT_SENSORS,
+	WAITING_TO_INIT,
+	INIT_SAMPLING,
+	DONE,
+	ERROR,
 }status_t;
 
-
 typedef enum sample_change_case_t{
-    NEW_MINUTE,
-    NEW_DAY,
-    NO_CHANGE,
+	NEW_MINUTE,
+	NEW_DAY,
+	NO_CHANGE,
 }sample_change_case_t;
-
-const char * statusAsString[] = { "START_CONFIG",
-                         "INITIATING",
-                         "WAITING_TO_INIT",
-                         "CALIBRATION",
-                         "INIT_SAMPLING",
-                         "DONE",
-                         "ERROR"};
-
 
 //////////////////////////////////////////////////////////////////
 // Configuracion de los mensajes de log por el puerto serie
