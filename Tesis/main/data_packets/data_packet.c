@@ -3,7 +3,7 @@
 
 static const char *TAG = "DATA_PACKET"; // Para los mensajes de LOG
 
-#define DEBUG_DATA_PACKET
+//#define DEBUG_DATA_PACKET
 #ifdef DEBUG_DATA_PACKET
 #define DEBUG_PRINT_DATA_PACKET(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
