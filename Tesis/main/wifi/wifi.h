@@ -35,6 +35,6 @@ typedef struct wifiParams {
 
 esp_err_t WIFI_init(wifiParams_t wifiParams);
 esp_err_t WIFI_connect(void);
-esp_err_t WIFI_parseParams(char *ssid, char *password, wifiParams_t *wifiParams);
+esp_err_t WIFI_parseParams ( wifiParams_t *wifiParams, char *ssid, char *password );
 
 #endif /* MAIN_WIFI_H_ */

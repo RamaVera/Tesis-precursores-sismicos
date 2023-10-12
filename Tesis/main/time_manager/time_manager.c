@@ -97,7 +97,7 @@ void TIME_printTimeAndDate(timeInfo_t *timeInfo) {
     ESP_LOGI(TAG, "Actual Time is: %s", asctime(&tm_time));
 }
 
-esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo) {
+esp_err_t TIME_parseParams ( timeInfo_t *timeInfo, char *yearAsString, char *monthAsString, char *dayAsString ) {
     char * endptr;
 
     int year = strtol(yearAsString, &endptr, 10);
@@ -127,4 +127,10 @@ void TIME_updateParams(timeInfo_t timeInfo, char * yearAsString, char * monthAsS
     sprintf(yearAsString, "%d", timeInfo.tm_year + 1900);
     sprintf(yearAsString, "%d", timeInfo.tm_mon + 1);
     sprintf(yearAsString, "%d", timeInfo.tm_mday);
+}
+
+void TIME_asString(char timeMessage[TIME_MESSAGE_LENGTH] ) {
+    timeInfo_t timeInfo;
+    TIME_getInfoTime(&timeInfo);
+    sprintf(timeMessage, "Time: %02d:%02d:%02d.%03d", timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec, timeInfo.milliseconds);
 }

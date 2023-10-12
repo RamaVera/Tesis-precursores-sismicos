@@ -6,9 +6,10 @@
 #define RTC_H
 
 #define TIMER_TO_REFRESH_HOUR_PERIOD_MS (60 * 60 * 1000) // 1hrs timer
-#define TIMER_DEFAULT_SAMPLE_PERIOD_MS 200
+#define TIMER_DEFAULT_SAMPLE_PERIOD_MS  1000 // 200  // 50us ?
 
 #define MAX_RETRIES_FOR_SYNC_TIME 15
+#define TIME_MESSAGE_LENGTH 18
 
 typedef struct timeInfo_t{
     int milliseconds; // Milisegundos (0-999)
@@ -38,10 +39,10 @@ typedef struct timeInfo_t{
 esp_err_t TIMER_create(int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse);
 esp_err_t TIMER_start(void);
 esp_err_t TIME_synchronizeTimeAndDate();
-void TIME_printTimeAndDate(timeInfo_t *timeInfo);
-esp_err_t TIME_parseParams(char * yearAsString, char * monthAsString, char * dayAsString, timeInfo_t *timeInfo);
+esp_err_t TIME_parseParams ( timeInfo_t *timeInfo, char *yearAsString, char *monthAsString, char *dayAsString );
 void TIME_printTimeNow(void);
 timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo);
 void TIME_updateParams(timeInfo_t timeInfo, char * yearAsString, char * monthAsString, char * dayAsString);
-
+void TIME_printTimeAndDate(timeInfo_t *timeInfo);
+void TIME_asString(char timeMessage[25]);
 #endif //RTC_H

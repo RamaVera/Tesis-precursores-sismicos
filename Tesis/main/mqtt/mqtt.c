@@ -3,10 +3,6 @@
  *  Maestría en Sistemas Embebidos - Sistemas embebidos distribuidos
  * \brief Contiene las funciones de inicializacion y manejo del protocolo mqtt
  */
-
-
-
-
 #include "mqtt.h"
 
 static const char *TAG = "MQTT";
@@ -66,7 +62,7 @@ void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
   MQTT_init(): Inicialización de MQTT
   ******************************************************************************/
 
- esp_err_t MQTT_parseParams(char *broker, char *port, char *user, char *password, mqttParams_t *mqttParams) {
+ esp_err_t MQTT_parseParams(mqttParams_t *mqttParams,char *broker, char *port, char *user, char *password ) {
      char * endptr;
 
      uint32_t num = strtol(port, &endptr, 10);

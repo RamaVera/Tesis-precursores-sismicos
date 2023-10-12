@@ -37,7 +37,7 @@ void MQTT_processTopic(const char * , const char * );
 void MQTT_subscribe(const char * );
 void MQTT_publish(const char *topic, const char *mensaje, unsigned int len);
 /* Definiciones */
-esp_err_t MQTT_parseParams(char *broker, char *port, char *user, char *password, mqttParams_t *mqttParams);
+esp_err_t MQTT_parseParams ( mqttParams_t *mqttParams, char *broker, char *port, char *user, char *password );
 
 #define MAX_TOPIC_LENGTH  100
 #define MAX_MSG_LENGTH  100
