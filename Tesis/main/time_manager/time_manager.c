@@ -1,4 +1,3 @@
-//
 // Created by Ramiro on 5/13/2023.
 //
 
@@ -6,17 +5,17 @@
 
 static const char *TAG = "TIME ";
 
-TimerHandle_t timerHandle;
-
-esp_err_t TIMER_create(int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse) {
-    timerHandle = xTimerCreate("timer", pdMS_TO_TICKS(periodInMS), pdTRUE, NULL, interruptToCallEveryTimelapse);
-    if (timerHandle == NULL) {
+esp_err_t TIMER_create (char *name, int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse, TimerHandle_t *handle ) {
+	TimerHandle_t timeHandle;
+	timeHandle = xTimerCreate(name, pdMS_TO_TICKS(periodInMS), pdTRUE, NULL, interruptToCallEveryTimelapse);
+    if (timeHandle == NULL) {
         return ESP_FAIL;
     }
+	*handle = timeHandle;
     return ESP_OK;
 }
 
-esp_err_t TIMER_start(void) {
+esp_err_t TIMER_start ( TimerHandle_t timerHandle ) {
     if (xTimerStart(timerHandle, 0) != pdPASS) {
         return ESP_FAIL;
     }
