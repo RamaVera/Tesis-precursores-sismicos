@@ -59,7 +59,7 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
 void IRAM_ATTR time_refreshInternalTimer(void* pvParameters);
 void IRAM_ATTR adc_mpu9250_sampleSynchronize(void* pvParameters);
 
-void IRAM_ATTR sampleManagerTask (void *pvParameters );
+void IRAM_ATTR sampleSynchronizerTask (void *pvParameters );
 void IRAM_ATTR adc_readingTask(void *pvParameters);
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters);
 void IRAM_ATTR adc_mpu9250_fusionTask(void *pvParameter);
@@ -77,7 +77,7 @@ void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_t *sdData,
 
 void app_main(void) {
 
-    status_t nextStatus = INIT_CONFIG;
+    status_t nextStatus = INIT_MODULES;
     config_params_t params;
     wifiParams_t wifiParams;
     mqttParams_t mqttParams;
@@ -89,31 +89,36 @@ void app_main(void) {
         printStatus(nextStatus);
 
         switch (nextStatus) {
-            case INIT_CONFIG: {
-				
+	        case INIT_MODULES: {
+		        if ( Button_init() != ESP_OK) return;
+		        if ( ADC_Init() != ESP_OK) return;
+		        if ( MPU9250_init() != ESP_OK) return;
+		        if ( ESP32_initSemaphores() != ESP_OK) return;
+		        if ( ESP32_initQueue() != ESP_OK) return;
                 if ( SD_init() != ESP_OK) return;
                 if ( SD_getConfigurationParams(&params) != ESP_OK) return;
 	            if ( TIME_parseParams( &timeInfo, params.init_year, params.init_month, params.init_day ) != ESP_OK) return;
-                if ( WIFI_parseParams( &wifiParams, params.wifi_ssid, params.wifi_password ) != ESP_OK) return;
+		        if ( WIFI_parseParams( &wifiParams, params.wifi_ssid, params.wifi_password ) != ESP_OK) return;
 				if ( WIFI_init(wifiParams) != ESP_OK) return;
-                nextStatus = (WIFI_connect() == ESP_OK)? INIT_WITH_WIFI : INIT_WITHOUT_WIFI;
+                nextStatus = (WIFI_connect() == ESP_OK)? INIT_WITH_WIFI : INIT_SAMPLING;
                 break;
             }
 
             case INIT_WITH_WIFI: {
-	            if (TIME_synchronizeTimeAndDate() != ESP_OK) {
+				// Synchronize time with NTP server
+	            if ( TIME_synchronizeTimeAndDateFromInternet() != ESP_OK) {
 		            ESP_LOGE(TAG, "Error synchronizing time");
 		            break;
 	            }
-	            if ( TIMER_create( "timer", TIMER_TO_REFRESH_HOUR_PERIOD_MS, time_refreshInternalTimer, &timeRefreshHandle) != ESP_OK) return;
-	            TIMER_start(timeRefreshHandle);
+				
+				// Timer to refresh time
+	            if ( TIMER_create( "timer_refresher", TIMER_TO_REFRESH_HOUR_PERIOD_MS, time_refreshInternalTimer, &timeRefreshHandle) != ESP_OK) return;
+	            if ( TIMER_start(timeRefreshHandle) != ESP_OK) return;
 	
+				// Update SD config with time and date
 	            TIME_getInfoTime(&timeInfo);
 	            TIME_updateParams(timeInfo, params.init_year, params.init_month, params.init_day);
 	            SD_saveLastConfigParams(&params);
-	
-	            TIME_printTimeAndDate(&timeInfo);
-	            if (DIR_setMainSampleDirectory(timeInfo.tm_year, timeInfo.tm_mon, timeInfo.tm_mday) != ESP_OK) return;
 				
 	            if ( MQTT_parseParams(
 		                &mqttParams,
@@ -124,58 +129,40 @@ void app_main(void) {
                     return;
                 if (MQTT_init(mqttParams) != ESP_OK) break;
                 MQTT_subscribe(TOPIC_TO_RECEIVE_COMMANDS);
-	            nextStatus = INIT_SENSORS;
+	            vTaskDelay(1000 / portTICK_PERIOD_MS);
+				nextStatus = INIT_WIFI_FUNCTIONS;
 	            break;
             }
+
+	        case INIT_WIFI_FUNCTIONS: {
+		        // CORE 0
+		       // xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &TIME_REFRESH_ISR, 0);
+		        xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &MQTT_RECEIVE_ISR, 0);
+		        xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 0);
+		
+		        nextStatus = INIT_SAMPLING;
+		        break;
+	        }
 			
-            case INIT_WITHOUT_WIFI: {
+            case INIT_SAMPLING: {
 	            TIME_printTimeAndDate(&timeInfo);
 	            if (DIR_setMainSampleDirectory(timeInfo.tm_year, timeInfo.tm_mon, timeInfo.tm_mday) != ESP_OK) return;
-	            nextStatus = INIT_SENSORS;
-                break;
-            }
-            
-            case INIT_SENSORS: {
-                if ( Button_init() != ESP_OK) return;
-                if ( ADC_Init() != ESP_OK) return;
-                if ( MPU9250_init() != ESP_OK) return;
-                if ( ESP32_initSemaphores() != ESP_OK) return;
-                if ( ESP32_initQueue() != ESP_OK) return;
-
-                nextStatus = WAITING_TO_INIT;
-                break;
-            }
-            case WAITING_TO_INIT: {
-                static bool firstTime = true;
-                if (firstTime) {
-                    WDT_disableOnAllCores();
-                    firstTime = false;
-                }
-                if (Button_isPressed()) {
-                    WDT_enableOnAllCores();
-                    nextStatus = INIT_SAMPLING;
-                }
-                break;
-            }
-            case INIT_SAMPLING: {
-                // CORE 1
-	            xTaskCreatePinnedToCore(sampleManagerTask, "log_sample", 1024 * 16, NULL, tskIDLE_PRIORITY + 4, &SAMPLE_LOG_ISR, 1);
+	
+	            // CORE 0
+	            xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 6, &SD_ISR,0);
+	
+	            // CORE 1
+	            xTaskCreatePinnedToCore(sampleSynchronizerTask, "sample_synchronizerTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 4, &SAMPLE_LOG_ISR, 1);
 	            xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
                 xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
 				xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &FUSION_ISR, 1);
 
-                // CORE 0
-                xTaskCreatePinnedToCore(mqtt_receiveCommandTask, "mqtt_receiveCommandTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &MQTT_RECEIVE_ISR, 0);
-//                xTaskCreatePinnedToCore(time_internalTimeSync, "time_internalTimeSync", 1024 * 16, NULL,tskIDLE_PRIORITY + 5, &TIME_REFRESH_ISR, 0);
-//                xTaskCreatePinnedToCore(mqtt_publishDataTask, "mqtt_publishDataTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MQTT_PUBLISH_ISR, 0);
-               xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 6, &SD_ISR,0);
-	            nextStatus = INIT_TIMERS;
+    
+				if ( TIMER_start(samplePeriodHandle) != ESP_OK) return;
+	            nextStatus = DONE;
 	            break;
             }
-	        case INIT_TIMERS: {
-		        if ( TIMER_start(samplePeriodHandle) != ESP_OK) return;
-		        nextStatus = DONE;
-			}
+			
             default:
                  break;
         }
@@ -186,7 +173,7 @@ void printStatus(status_t nextStatus) {
     static status_t lastStatus = ERROR;
 
     if( lastStatus != nextStatus) {
-        ESP_LOGI(TAG, "\n--------------%s-----------------\n",statusAsString[nextStatus]);
+        ESP_LOGI(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
         lastStatus = nextStatus;
     }
 }
@@ -227,9 +214,8 @@ void IRAM_ATTR adc_mpu9250_sampleSynchronize(void* pvParameters){
 
 //------------------------------ TASKS -----------------------------------------
 
-void IRAM_ATTR sampleManagerTask (void *pvParameters ) {
-	// This interruptions are creaed here to run on core 1.
-	if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
+void IRAM_ATTR sampleSynchronizerTask (void *pvParameters ) {
+	// This interruptions are created here to run on core 1.
 	if ( TIMER_create("timer sample", TIMER_DEFAULT_SAMPLE_PERIOD_MS, adc_mpu9250_sampleSynchronize, &samplePeriodHandle) != ESP_OK) return;
 	
 	WDT_addTask(SAMPLE_LOG_ISR);
@@ -244,7 +230,10 @@ void IRAM_ATTR sampleManagerTask (void *pvParameters ) {
 
 void IRAM_ATTR mpu9250_readingTask(void *pvParameters) {
     ESP_LOGI(TAG_MPU, "MPU task init");
-    WDT_addTask(MPU_ISR);
+	// This interruptions are created here to run on core 1.
+	if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
+	
+	WDT_addTask(MPU_ISR);
     char timeMessage[TIME_MESSAGE_LENGTH];
     MPU9250_t mpuSample;
     timeInfo_t timeInfo;
@@ -525,7 +514,7 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
 
     int lastMinute = -1, lastHour = -1;
     while (1) {
-        vTaskDelay(1);
+        vTaskDelay(MIN_DELAY_FOR_WHILE);
         if(uxQueueMessagesWaiting(MQTTDataQueue) > 0 ){
             if(xSemaphoreTake(xSemaphore_MQTTMutexQueue, 1) == pdTRUE) {
                 MQTT_publish(TOPIC_TO_PUBLISH_DATA, "Start Sending", 13);
@@ -577,9 +566,11 @@ void IRAM_ATTR mqtt_publishDataTask(void *pvParameters){
 
 void IRAM_ATTR time_internalTimeSync(void *pvParameters){
     ESP_LOGI(TAG, "Time sync task init");
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
     while (1) {
+	    vTaskDelay(MIN_DELAY_FOR_WHILE);
         vTaskSuspend(TIME_REFRESH_ISR);
-        TIME_synchronizeTimeAndDate();
+	    TIME_synchronizeTimeAndDateFromInternet();
         TIME_printTimeNow();
     }
 }

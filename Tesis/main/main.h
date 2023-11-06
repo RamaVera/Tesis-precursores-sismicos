@@ -31,27 +31,27 @@
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
 #define MIN_SAMPLES_TO_DO_FUSION 2
-#define MIN_SAMPLES_TO_SAVE 10
+#define MIN_SAMPLES_TO_SAVE 6
 #define MIN_TICK_DIFF_TO_MATCH 5
 
 
 
 const char * statusAsString[] = {
-		                 "INIT_CONFIG",
+		                 "INIT_MODULES",
                          "INIT_WITH_WIFI",
                          "INIT_WITHOUT_WIFI",
-                         "INIT_SENSORS",
                          "WAITING_TO_INIT",
-                         "INIT_SAMPLING",
+		                 "INIT_WIFI_FUNCTIONS",
+		                 "INIT_SAMPLING",
 		                 "INIT_TIMERS",
 		                 "DONE",
 		                 "ERROR"};
 typedef enum status_t{
-	INIT_CONFIG,
+	INIT_MODULES,
 	INIT_WITH_WIFI,
 	INIT_WITHOUT_WIFI,
-	INIT_SENSORS,
 	WAITING_TO_INIT,
+	INIT_WIFI_FUNCTIONS,
 	INIT_SAMPLING,
 	INIT_TIMERS,
 	DONE,
