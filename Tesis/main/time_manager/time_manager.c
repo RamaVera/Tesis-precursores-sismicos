@@ -16,13 +16,13 @@ esp_err_t TIMER_create (char *name, int32_t periodInMS, TimerCallbackFunction_t 
 }
 
 esp_err_t TIMER_start ( TimerHandle_t timerHandle ) {
-    if (xTimerStart(timerHandle, 0) != pdPASS) {
+    if (xTimerStart(timerHandle, 1) != pdPASS) {
         return ESP_FAIL;
     }
     return ESP_OK;
 }
 
-esp_err_t TIME_synchronizeTimeAndDate() {
+esp_err_t TIME_synchronizeTimeAndDateFromInternet () {
     ESP_LOGI(TAG, "Getting time from NTP server...");
 
     // Seteo timezone de Argentina GMT-3

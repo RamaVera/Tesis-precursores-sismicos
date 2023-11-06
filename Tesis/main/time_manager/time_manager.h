@@ -39,7 +39,7 @@ typedef struct timeInfo_t{
 
 esp_err_t TIMER_create (char *name, int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse, TimerHandle_t *handle );
 esp_err_t TIMER_start ( TimerHandle_t timerHandle );
-esp_err_t TIME_synchronizeTimeAndDate();
+esp_err_t TIME_synchronizeTimeAndDateFromInternet ();
 esp_err_t TIME_parseParams ( timeInfo_t *timeInfo, char *yearAsString, char *monthAsString, char *dayAsString );
 void TIME_printTimeNow(void);
 timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo);
