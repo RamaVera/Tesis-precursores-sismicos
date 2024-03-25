@@ -348,11 +348,11 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                 sampleCounterToSave++;
             }
             TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saving all data>>>>>>>>>>>\t\t\t\t%s", timeMessage);
+            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saving all data>>>>>>>>>>>\t\t\t\t\t%s", timeMessage);
             SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
 
             TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saved all data >>>>>>>>>>>\t\t\t\t\t\t%s", timeMessage);
+            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saved all data >>>>>>>>>>>\t\t\t\t\t%s", timeMessage);
             memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
             xSemaphoreGive(xSemaphore_SDMutexQueue);
 
@@ -531,7 +531,7 @@ bool takeSDQueueWhenSamplesAre(int numberOfSamples) {
     if (lenOfSDQueue >= numberOfSamples) {
         if (xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
 	        TIME_asString(timeMessage);
-	        DEBUG_PRINT_MAIN(TAG_SD, "Task SD TAKED  >>>>>>>>>>> \t\t\t\t\t\t%s", timeMessage);
+	        DEBUG_PRINT_MAIN(TAG_SD, "Task SD Taked  >>>>>>>>>>>\t\t\t\t\t\t%s", timeMessage);
 	        return true;
         }
     }
