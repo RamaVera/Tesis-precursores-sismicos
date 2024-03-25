@@ -20,7 +20,7 @@ static const char *TAG = "DIRECTORY "; // Para los mensajes de LOG
 
 esp_err_t DIR_Exist(char *dirPath) {
     if (access(dirPath, F_OK) != 0 ) {
-        ESP_LOGE(TAG, "%s not found", dirPath);
+        ESP_LOGW(TAG, "%s not found", dirPath);
         return ESP_FAIL;
     }
     DEBUG_PRINT_DIR(TAG, "%s already exist", dirPath);

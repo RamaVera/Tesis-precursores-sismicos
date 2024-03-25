@@ -117,7 +117,7 @@ esp_err_t mpu9250_start(void)
     if( mpu9250_write(GYRO_CONFIG, 0x18)    != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
     // Accel scale 2g
     if( mpu9250_write(ACCEL_CONFIG, 0x08)   != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
-    // FCHOICE [1] A_DLPF_CFG 0x02 3dB BW:9Hz Fs:1 KHz DLPF Delay:2.88
+    // FCHOICE [1] A_DLPF_CFG 0x02 3dB BW:9KHz Fs:1 KHz DLPF Delay:2.88
     if( mpu9250_write(ACCEL_CONFIG2, 0x02)  != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);
     // Set sample rate = gyroscope output rate 8000Khz/(1 + SMPLRT_DIV) ---> 1000hz / (1+0) = 1000hz
     if( mpu9250_write(SMPLRT_DIV, 0x00)     != ESP_OK){ return ESP_FAIL;} vTaskDelay(1/portTICK_PERIOD_MS);

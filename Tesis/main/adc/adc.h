@@ -10,7 +10,7 @@
 #include "../pinout.h"
 
 esp_err_t ADC_Init();
-ADC_t ADC_GetRaw();
+esp_err_t ADC_GetRaw ( ADC_t *adc );
 
 
 #endif //ADC_H

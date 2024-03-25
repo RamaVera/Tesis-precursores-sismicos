@@ -15,10 +15,9 @@ esp_err_t ADC_Init() {
     return ESP_OK;
 }
 
-ADC_t ADC_GetRaw() {
-    ADC_t adc;
-    adc.adcX = (uint16_t)adc1_get_raw(ADC1_CHANNEL_5);
-    adc.adcY = (uint16_t)adc1_get_raw(ADC1_CHANNEL_6);
-    adc.adcZ = (uint16_t)adc1_get_raw(ADC1_CHANNEL_7);
-    return adc;
+esp_err_t ADC_GetRaw ( ADC_t *adc ) {
+    adc->adcX = (uint16_t)adc1_get_raw(ADC1_CHANNEL_5);
+    adc->adcY = (uint16_t)adc1_get_raw(ADC1_CHANNEL_6);
+    adc->adcZ = (uint16_t)adc1_get_raw(ADC1_CHANNEL_7);
+	return ESP_OK;
 }
