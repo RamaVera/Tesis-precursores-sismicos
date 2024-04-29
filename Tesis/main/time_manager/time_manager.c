@@ -38,7 +38,7 @@ esp_err_t TIME_synchronizeTimeAndDateFromInternet () {
     uint16_t retries;
     for ( retries = 0 ; (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retries < MAX_RETRIES_FOR_SYNC_TIME) ; retries++ ){
         ESP_LOGI(TAG, "Synchronizing time...");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
     sntp_stop();
 
@@ -48,6 +48,13 @@ esp_err_t TIME_synchronizeTimeAndDateFromInternet () {
     }
     return ESP_OK;
 }
+
+timeval_t TIME_saveSnapshot (timeval_t *timeInfo ) {
+	struct timezone tz_argentina = { .tz_minuteswest = -180, .tz_dsttime = 0 };
+	gettimeofday(timeInfo, &tz_argentina);
+	return *timeInfo;
+}
+
 
 timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo) {
     time_t now = 0;
@@ -128,8 +135,17 @@ void TIME_updateParams(timeInfo_t timeInfo, char * yearAsString, char * monthAsS
     sprintf(yearAsString, "%d", timeInfo.tm_mday);
 }
 
-void TIME_asString(char timeMessage[TIME_MESSAGE_LENGTH] ) {
-    timeInfo_t timeInfo;
-    TIME_getInfoTime(&timeInfo);
-    sprintf(timeMessage, "Time: %02d:%02d:%02d.%03d", timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec, timeInfo.milliseconds);
+void TIME_DiffNow (timeInfo_t *actual, timeval_t *init ) {
+	timeval_t end;
+	TIME_saveSnapshot( &end );
+	TIME_Diff( actual, init, &end );
+}
+
+void TIME_Diff( timeInfo_t *actual, timeval_t *init, timeval_t *end ) {
+	actual->tm_mday = abs(end->tv_sec - init->tv_sec) / (60 * 60 * 24);
+	actual->tm_hour = abs((end->tv_sec - init->tv_sec) % (60 * 60 * 24)) / (60 * 60);
+	actual->tm_min = abs((end->tv_sec - init->tv_sec) % (60 * 60)) / 60;
+	actual->tm_sec = abs((end->tv_sec - init->tv_sec) % 60);
+	actual->milliseconds = abs((end->tv_usec - init->tv_usec) / 1000);
+	actual->microseconds = abs((end->tv_usec - init->tv_usec) % 1000);
 }

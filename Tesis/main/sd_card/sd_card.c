@@ -9,7 +9,7 @@
 
 const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 
-#define SD_DEBUG_MODE
+//#define SD_DEBUG_MODE
 #ifdef SD_DEBUG_MODE
 #define DEBUG_PRINT_SD(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
@@ -167,10 +167,10 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
         char buffer[MAX_LINE_SIZE];
 
         if (SD_getRawConfigParams(buffer, MAX_LINE_SIZE) == ESP_OK ){
-            ESP_LOGI(TAG, "Parsing from config.txt");
+	        DEBUG_PRINT_SD(TAG, "Parsing from config.txt");
             SD_parseRawConfigParams(configParams, buffer);
         } else {
-            ESP_LOGI(TAG, "Parsing from fallback");
+	        DEBUG_PRINT_SD(TAG, "Parsing from fallback");
             SD_setFallbackConfigParams(configParams);
         }
 

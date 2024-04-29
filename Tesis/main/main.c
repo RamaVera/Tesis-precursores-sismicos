@@ -14,9 +14,12 @@
 #define QUEUE_SAMPLE_LENGTH 50
 #define QUEUE_MQTT_LENGTH 2000
 #define MIN_DELAY_FOR_WHILE (1)
+#define MAX_LOG_MESSAGES 30
+#define MIN_SAMPLES_TO_SAVE 50
 
-TaskHandle_t SAMPLE_LOG_ISR = NULL;
+TaskHandle_t TIMER_CREATOR_ISR = NULL;
 TaskHandle_t SD_ISR = NULL;
+TaskHandle_t LOG_ISR = NULL;
 TaskHandle_t SENSOR_ISR = NULL;
 
 TaskHandle_t MQTT_PUBLISH_ISR = NULL;
@@ -40,19 +43,26 @@ static const char *TAG_MQTT_RECIEVER = "MQTT_RCVR_MAIN ";
 static const char *TAG_MQTT_PUBLISHER= "MQTT_PSHR_MAIN ";
 static const char *TAG_SD = "SD_MAIN ";
 
-#define DEBUG
+
+typedef struct logMessages_t{
+	char tag[20];
+	timeval_t time;
+	char message[100];
+} logMessages_t;
+
+
+static timeval_t programStartTime;
+logMessages_t logMessages[MAX_LOG_MESSAGES];
+int logMessagesIndex = 0;
+
+//#define DEBUG
 #ifdef DEBUG
-#define DEBUG_PRINT_MAIN(tag, fmt, ...) \
-    if (strcmp(tag, TAG_SD) == 0 || \
-        strcmp(tag, TAG_MQTT_RECIEVER) == 0 || \
-        strcmp(tag, TAG_MQTT_PUBLISHER) == 0) { \
-        ESP_LOGW(tag, fmt, ##__VA_ARGS__); \
-    } else { \
-        ESP_LOGI(tag, fmt, ##__VA_ARGS__); \
-    }
+#define SAMPLE_PERIOD_MS SAMPLE_PERIOD_FOR_LOGS_MS
+#define DEBUG_PRINT_MAIN(tag, message) appendMessageWithTime(tag, message);
 #define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) ets_printf(fmt, ##__VA_ARGS__)
 #else
-#define DEBUG_PRINT_MAIN(tag, fmt, ...) do {} while (0)
+#define SAMPLE_PERIOD_MS DEFAULT_SAMPLE_PERIOD_MS
+#define DEBUG_PRINT_MAIN(tag, message) do {} while (0)
 #define DEBUG_PRINT_INTERRUPT_MAIN(fmt, ...) do {} while (0)
 #endif
 
@@ -60,18 +70,21 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters);
 void IRAM_ATTR time_refreshInternalTimer(void* pvParameters);
 void IRAM_ATTR adc_mpu9250_sampleSynchronize(void* pvParameters);
 
-void IRAM_ATTR sampleSynchronizerTask (void *pvParameters );
+void IRAM_ATTR timer_creatorTask (void *pvParameters );
 void IRAM_ATTR sensors_readingTask(void *pvParameters);
 
 void IRAM_ATTR sd_savingTask(void *pvParameters);
 void IRAM_ATTR mqtt_publishDataTask(void *pvParameters);
 void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters);
 void IRAM_ATTR time_internalTimeSync(void *pvParameters);
+void IRAM_ATTR log_Task(void *pvParameters);
 
 bool takeSDQueueWhenSamplesAre(int numberOfSamples);
 sample_change_case_t analyzeSampleTime(int hour, int min, int seconds);
 char * printSampleTimeState(sample_change_case_t state);
 void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_t *sdData, int minute, int hour);
+void appendMessageWithTime ( const char *tag, char *message );
+char* toString(const char* format, ...);
 
 void app_main(void) {
 
@@ -82,7 +95,9 @@ void app_main(void) {
     timeInfo_t timeInfo;
 
     defineLogLevels();
-	DEBUG_PRINT_MAIN(TAG, "Core ID: %d", xPortGetCoreID()); // Main Runs on Core 0
+	ESP_LOGI(TAG, "Core ID: %d", xPortGetCoreID()); // Main Runs on Core 0
+	TIME_saveSnapshot( &programStartTime );
+	
     while(nextStatus != DONE){
         printStatus(nextStatus);
 
@@ -106,6 +121,7 @@ void app_main(void) {
 				// Synchronize time with NTP server
 	            if ( TIME_synchronizeTimeAndDateFromInternet() != ESP_OK) {
 		            ESP_LOGE(TAG, "Error synchronizing time");
+					nextStatus = ERROR;
 		            break;
 	            }
 				
@@ -143,16 +159,22 @@ void app_main(void) {
 	        }
 			
             case INIT_SAMPLING: {
+	            gpio_pad_select_gpio(GPIO_NUM_32);
+	            gpio_set_direction(GPIO_NUM_32, GPIO_MODE_OUTPUT);
+	            gpio_pad_select_gpio(GPIO_NUM_15);
+	            gpio_set_direction(GPIO_NUM_15, GPIO_MODE_OUTPUT);
 	            TIME_printTimeAndDate(&timeInfo);
 	            if (DIR_setMainSampleDirectory(timeInfo.tm_year, timeInfo.tm_mon, timeInfo.tm_mday) != ESP_OK) return;
 	
 	            // CORE 0
 	            xTaskCreatePinnedToCore(sd_savingTask, "sd_savingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 6, &SD_ISR,0);
-	
+
 	            // CORE 1
-	            xTaskCreatePinnedToCore(sampleSynchronizerTask, "sample_synchronizerTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 4, &SAMPLE_LOG_ISR, 1);
+	            xTaskCreatePinnedToCore( timer_creatorTask, "sample_synchronizerTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 4, &TIMER_CREATOR_ISR, 1);
 	            xTaskCreatePinnedToCore(sensors_readingTask, "sensors_readingTask", 1024 * 16, NULL, tskIDLE_PRIORITY + 3, &SENSOR_ISR, 1);
-	
+#ifdef DEBUG
+	            xTaskCreatePinnedToCore(log_Task, "log_Task", 1024 * 16, NULL, tskIDLE_PRIORITY + 1, &LOG_ISR,1);
+#endif
 	            //xTaskCreatePinnedToCore(adc_readingTask, "adc_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &ADC_ISR, 1);
                 //xTaskCreatePinnedToCore(mpu9250_readingTask, "mpu9250_readingTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 3, &MPU_ISR, 1);
 				//xTaskCreatePinnedToCore(adc_mpu9250_fusionTask, "adc_mpu9250_fusionTask", 1024 * 16, NULL,tskIDLE_PRIORITY + 2, &FUSION_ISR, 1);
@@ -163,26 +185,14 @@ void app_main(void) {
 	            break;
             }
 			
+			case ERROR: {
+		        esp_restart();
+	        };
+			
             default:
                  break;
         }
     }
-}
-
-void printStatus(status_t nextStatus) {
-    static status_t lastStatus = ERROR;
-
-    if( lastStatus != nextStatus) {
-        ESP_LOGI(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
-        lastStatus = nextStatus;
-    }
-}
-
-void defineLogLevels() {
-    esp_log_level_set(TAG,ESP_LOG_VERBOSE );
-    esp_log_level_set(TAG_MQTT_RECIEVER, ESP_LOG_VERBOSE );
-    esp_log_level_set(TAG_MQTT_PUBLISHER, ESP_LOG_VERBOSE );
-    esp_log_level_set(TAG_SD, ESP_LOG_VERBOSE );
 }
 
 //----------------------------INTERRUPTIONS -----------------------------------
@@ -191,7 +201,6 @@ void IRAM_ATTR mpu9250_enableReadingTaskByInterrupt(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xSemaphore_newDataOnMPU, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    //DEBUG_PRINT_INTERRUPT_MAIN(">m>\n");
 }
 
 void IRAM_ATTR time_refreshInternalTimer(void* pvParameters){
@@ -203,42 +212,57 @@ void IRAM_ATTR time_refreshInternalTimer(void* pvParameters){
 
 void IRAM_ATTR adc_mpu9250_sampleSynchronize(void* pvParameters){
     BaseType_t xHigherPriorityTaskWoken = pdTRUE;
-	xTaskResumeFromISR(SAMPLE_LOG_ISR);
+#ifdef DEBUG
+	xTaskResumeFromISR(LOG_ISR);
+#endif
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	xTaskResumeFromISR(SENSOR_ISR);
 }
 
 //------------------------------ TASKS -----------------------------------------
 
-void IRAM_ATTR sampleSynchronizerTask (void *pvParameters ) {
-	// This interruptions are created here to run on core 1.
-	if ( TIMER_create("timer sample", TIMER_DEFAULT_SAMPLE_PERIOD_MS, adc_mpu9250_sampleSynchronize, &samplePeriodHandle) != ESP_OK) return;
+void IRAM_ATTR log_Task(void *pvParameters) {
+	ESP_LOGI(TAG, "Log task init");
+	WDT_addTask(LOG_ISR);
+	timeInfo_t toPrint;
 	
-	WDT_addTask(SAMPLE_LOG_ISR);
-	struct timeval tv;
 	while (true) {
-		gettimeofday(&tv, NULL);
-		DEBUG_PRINT_MAIN(TAG, "\n>>>>>>>>>>>>>>>>>>>>>>>>> ms: %ld", tv.tv_usec / 1000);
-		WDT_reset(SAMPLE_LOG_ISR);
-		vTaskSuspend(SAMPLE_LOG_ISR);
+		for (int i = 0; i < logMessagesIndex; i++){
+			TIME_Diff( &toPrint, &programStartTime, &(logMessages[i].time));
+			ESP_LOGI(TAG, "Time: %02d:%02d:%02d.%03d.%03d -- %02d:%s", toPrint.tm_hour,toPrint.tm_min, toPrint.tm_sec , toPrint.milliseconds ,toPrint.microseconds,i, logMessages[i].message);
+			vTaskDelay(MIN_DELAY_FOR_WHILE);
+		}
+		logMessagesIndex = 0;
+		WDT_reset(LOG_ISR);
+		vTaskSuspend(LOG_ISR);
 	}
 }
 
+void IRAM_ATTR timer_creatorTask (void *pvParameters ) {
+	// This interruptions are created here to run on core 1.
+	if ( TIMER_create( "timer sample", SAMPLE_PERIOD_MS, adc_mpu9250_sampleSynchronize, &samplePeriodHandle) != ESP_OK) return;
+	vTaskSuspend( TIMER_CREATOR_ISR);
+}
+
 void IRAM_ATTR sensors_readingTask(void *pvParameters) {
-    ESP_LOGI(TAG_SENSORS, "MPU/ADC task init");
+	ESP_LOGI(TAG_SENSORS, "MPU/ADC task init");
 	// This interruptions are created here to run on core 1.
 	if ( MPU9250_attachInterruptWith(mpu9250_enableReadingTaskByInterrupt, true) != ESP_OK) return;
 	
 	WDT_addTask(SENSOR_ISR);
-    char timeMessage[TIME_MESSAGE_LENGTH];
     MPU9250_t mpuSample;
 	ADC_t adcSample;
 	timeInfo_t timeInfo;
 	QueuePacket_t resultPacket;
+	gpio_set_level(GPIO_NUM_32, 0);
 	
 	while (true) {
-	    vTaskSuspend(SENSOR_ISR);
-	    // xSemaphore_newDataOnMPU toma el semaforo principal.
+		
+		vTaskSuspend(SENSOR_ISR);
+		gpio_set_level(GPIO_NUM_32, 1);
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "Task MPU9250/ADC Start" );
+		
+		// xSemaphore_newDataOnMPU toma el semaforo principal.
         // Solo se libera si la interrupcion de nuevo dato disponible lo libera.
         // Para que la interrupcion se de, tiene que llamarse a mpu9250_ready
         if (xSemaphoreTake(xSemaphore_newDataOnMPU, 1) != pdTRUE) {
@@ -246,9 +270,7 @@ void IRAM_ATTR sensors_readingTask(void *pvParameters) {
             vTaskDelay(1 / portTICK_PERIOD_MS);
             continue;
         }
-
-        TIME_asString(timeMessage);
-        ESP_LOGI(TAG_SENSORS, "Task MPU9250/ADC Reading\t\t\t\t\t%s", timeMessage);
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "MPU9250 Reading" );
 
         TIME_getInfoTime(&timeInfo);
         if (MPU9250_ReadAcce(&mpuSample) != ESP_OK) {
@@ -258,26 +280,22 @@ void IRAM_ATTR sensors_readingTask(void *pvParameters) {
         }
 		mpu9250_ready();
 		
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "ADC Reading" );
 		if (ADC_GetRaw( &adcSample ) != ESP_OK) {
 			ESP_LOGE(TAG_SENSORS, "ADC Task Fail getting data");
 			xSemaphoreGive(xSemaphore_newDataOnMPU);
 			continue;
 		}
-
-        TIME_asString(timeMessage);
-        DEBUG_PRINT_MAIN(TAG_SENSORS, "Task MPU9250 Saving X:%d Y:%d Z:%d \t\t\t%s", mpuSample.accelX, mpuSample.accelY, mpuSample.accelZ,timeMessage);
-        DEBUG_PRINT_MAIN(TAG_SENSORS, "Task ADC Saving     X:%d Y:%d Z:%d \t\t\t\t%s", adcSample.adcX, adcSample.adcY, adcSample.adcZ,timeMessage);
 		
-        TIME_asString(timeMessage);
-        ESP_LOGI(TAG_SENSORS, "Task MPU9250/ADC Before semaphore SD \t\t\t\t%s", timeMessage);
-        if ( xSemaphoreTake(xSemaphore_SDMutexQueue, 1) != pdTRUE) {
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "Task MPU9250/ADC Before semaphore SD" );
+		if ( xSemaphoreTake(xSemaphore_SDMutexQueue, 1) != pdTRUE) {
             ESP_LOGE(TAG_SENSORS, "Error taking SD mutex");
 			xSemaphoreGive(xSemaphore_newDataOnMPU);
 			continue;
 		}
-        TIME_asString(timeMessage);
-        DEBUG_PRINT_MAIN(TAG_SENSORS, "Task SD sending >>>>>>>>>>> \t\t\t\t\t%s", timeMessage);
-        if (!buildDataPacketForSD(mpuSample, adcSample, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec,&resultPacket)) {
+		
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "Task SD sending" );
+		if (!buildDataPacketForSD(mpuSample, adcSample, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec,&resultPacket)) {
 	        ESP_LOGE(TAG_SENSORS, "\t Error building packet ... losing samples");
         }
 
@@ -285,14 +303,15 @@ void IRAM_ATTR sensors_readingTask(void *pvParameters) {
 	        ESP_LOGE(TAG_SENSORS, "\t Error sending packet to SD queue");
         }
         xSemaphoreGive(xSemaphore_SDMutexQueue);
-			
-        TIME_asString(timeMessage);
-        ESP_LOGI(TAG_SENSORS, "Task MPU9250/ADC Finish \t\t\t\t\t%s", timeMessage);
-	    WDT_reset(SENSOR_ISR);
+		
+		//DEBUG_PRINT_MAIN( TAG_SENSORS, "Task MPU9250/ADC Finish" );
+		gpio_set_level(GPIO_NUM_32, 0);
+		WDT_reset(SENSOR_ISR);
     }
 }
 
 void IRAM_ATTR sd_savingTask(void *pvParameters) {
+	gpio_set_level(GPIO_NUM_15, 0);
 
     ESP_LOGI(TAG_SD,"SD task init");
     WDT_addTask(SD_ISR);
@@ -302,23 +321,19 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     QueuePacket_t aReceivedPacket;
     SD_time_t sdDataArray[QUEUE_SAMPLE_LENGTH];
     char mainPathToSave[MAX_SAMPLE_PATH_LENGTH];
-    char timeMessage[TIME_MESSAGE_LENGTH];
 
     DIR_getMainSampleDirectory(mainPathToSave);
 
     while (1) {
-        int sampleCounterToSave = 0;
+	    int sampleCounterToSave = 0;
         if (takeSDQueueWhenSamplesAre(MIN_SAMPLES_TO_SAVE)) {
-            TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD save init  >>>>>>>>>>> \t\t\t\t\t%s", timeMessage);
-            while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
-	            vTaskDelay(MIN_DELAY_FOR_WHILE );
+	        gpio_set_level(GPIO_NUM_15, 1);
+	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD save init" );
+			while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
 	            sdData = getSDDataFromPacket(&aReceivedPacket);
-                //DEBUG_PRINT_MAIN(TAG, "SD Task Received sdData");
                 sample_change_case_t sampleTimeState = analyzeSampleTime(sdData.hour, sdData.min, sdData.seconds);
-	            TIME_asString(timeMessage);
-                DEBUG_PRINT_MAIN(TAG_SD, "SD Task Received sdData with state %s\t\t\t%s", printSampleTimeState(sampleTimeState),timeMessage);
-                switch(sampleTimeState){
+				//DEBUG_PRINT_MAIN( TAG_SD, toString("SD Task Received sdData with state %s", printSampleTimeState(sampleTimeState)) );
+				switch(sampleTimeState){
                     case NEW_MINUTE:
                         if(sampleCounterToSave != 0) {
                             SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
@@ -347,20 +362,20 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
                 sdDataArray[sampleCounterToSave] = sdData;
                 sampleCounterToSave++;
             }
-            TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saving all data>>>>>>>>>>>\t\t\t\t\t%s", timeMessage);
-            SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
-
-            TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD saved all data >>>>>>>>>>>\t\t\t\t\t%s", timeMessage);
+	        xSemaphoreGive(xSemaphore_SDMutexQueue);
+	        gpio_set_level(GPIO_NUM_15, 0);
+	        gpio_set_level(GPIO_NUM_15, 1);
+	
+	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD returning SD mutex" );
+	
+	        SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD saved all data" );
             memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
-            xSemaphoreGive(xSemaphore_SDMutexQueue);
-
-            TIME_asString(timeMessage);
-            DEBUG_PRINT_MAIN(TAG_SD, "Task SD finish >>>>>>>>>>>\t\t\t\t\t\t%s", timeMessage);
+	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD finish" );
         }
 	    vTaskDelay(MIN_DELAY_FOR_WHILE );
 	    WDT_reset(SD_ISR);
+	    gpio_set_level(GPIO_NUM_15, 0);
     }
 }
 
@@ -379,7 +394,7 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
                 ESP_LOGE(TAG_MQTT_RECIEVER, "MQTT error parsing command %s", rawCommand);
                 continue;
             }
-            DEBUG_PRINT_MAIN(TAG_MQTT_RECIEVER, "MQTT Task Received command %s", COMMAND_GetHeaderType(command));
+            DEBUG_PRINT_MAIN(TAG_MQTT_RECIEVER, toString("MQTT Task Received command %s", COMMAND_GetHeaderType(command)));
             switch ( command.header) {
                 case RETRIEVE_DATA:{
                     int dayToGet = command.startDay;
@@ -500,17 +515,33 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters){
 //------------------------------ UTILS -----------------------------------------
 
 esp_err_t ESP32_initQueue() {
-    MQTTDataQueue = xQueueCreate(QUEUE_MQTT_LENGTH, sizeof(SD_t));                  if(MQTTDataQueue == NULL)   return ESP_FAIL;
-    SDDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, sizeof(QueuePacket_t));         if(SDDataQueue == NULL)     return ESP_FAIL;
-    return ESP_OK;
+	MQTTDataQueue = xQueueCreate(QUEUE_MQTT_LENGTH, sizeof(SD_t));                  if(MQTTDataQueue == NULL)   return ESP_FAIL;
+	SDDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, sizeof(QueuePacket_t));         if(SDDataQueue == NULL)     return ESP_FAIL;
+	return ESP_OK;
 }
 
 esp_err_t ESP32_initSemaphores() {
-    xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
+	xSemaphore_newDataOnMPU = xSemaphoreCreateBinary(); if( xSemaphore_newDataOnMPU == NULL )   return ESP_FAIL;
 	xSemaphore_MPU_ADCMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_MPU_ADCMutexQueue == NULL )  return ESP_FAIL;
-    xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
-    xSemaphore_SDMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_SDMutexQueue == NULL )  return ESP_FAIL;
-    return ESP_OK;
+	xSemaphore_MQTTMutexQueue = xSemaphoreCreateMutex();if( xSemaphore_MQTTMutexQueue == NULL ) return ESP_FAIL;
+	xSemaphore_SDMutexQueue = xSemaphoreCreateMutex(); if( xSemaphore_SDMutexQueue == NULL )  return ESP_FAIL;
+	return ESP_OK;
+}
+
+void printStatus(status_t nextStatus) {
+	static status_t lastStatus = ERROR;
+	
+	if( lastStatus != nextStatus) {
+		ESP_LOGI(TAG, "--------------%s-----------------\n",statusAsString[nextStatus]);
+		lastStatus = nextStatus;
+	}
+}
+
+void defineLogLevels() {
+	esp_log_level_set(TAG,ESP_LOG_VERBOSE );
+	esp_log_level_set(TAG_MQTT_RECIEVER, ESP_LOG_VERBOSE );
+	esp_log_level_set(TAG_MQTT_PUBLISHER, ESP_LOG_VERBOSE );
+	esp_log_level_set(TAG_SD, ESP_LOG_VERBOSE );
 }
 
 char * printSampleTimeState(sample_change_case_t state) {
@@ -526,12 +557,10 @@ char * printSampleTimeState(sample_change_case_t state) {
 
 
 bool takeSDQueueWhenSamplesAre(int numberOfSamples) {
-	char timeMessage[TIME_MESSAGE_LENGTH];
 	UBaseType_t lenOfSDQueue = uxQueueMessagesWaiting(SDDataQueue);
     if (lenOfSDQueue >= numberOfSamples) {
         if (xSemaphoreTake(xSemaphore_SDMutexQueue, 1) == pdTRUE) {
-	        TIME_asString(timeMessage);
-	        DEBUG_PRINT_MAIN(TAG_SD, "Task SD Taked  >>>>>>>>>>>\t\t\t\t\t\t%s", timeMessage);
+	        DEBUG_PRINT_MAIN(TAG_SD, "Task SD Taked");
 	        return true;
         }
     }
@@ -580,3 +609,40 @@ void pushSDDataToMQTTQueueRoutine(size_t totalDataRetrieved, const SD_t *sdData,
     }
 }
 
+void appendMessageWithTime ( const char *tag, char *message ) {
+	timeval_t timeSnapshot;
+	TIME_saveSnapshot(&timeSnapshot);
+	if (logMessagesIndex > MAX_LOG_MESSAGES){
+		ESP_LOGW(TAG, "Log messages index overflow");
+		logMessagesIndex = 0;
+	}
+	logMessages[logMessagesIndex].time = timeSnapshot;
+	strcpy(logMessages[logMessagesIndex].message, message);
+	strcpy(logMessages[logMessagesIndex].tag, tag);
+	logMessagesIndex++;
+}
+
+char* toString(const char* format, ...) {
+	va_list args;
+	va_start(args, format);
+	
+	// Calculamos el tamaño necesario para la cadena de salida
+	int size = vsnprintf(NULL, 0, format, args);
+	
+	// Reseteamos la lista de argumentos
+	va_end(args);
+	va_start(args, format);
+	
+	// Reservamos memoria para la cadena de salida
+	char* output = malloc(size + 1); // +1 para el caracter nulo '\0'
+	if (output == NULL) {
+		return NULL; // Si no se pudo reservar memoria, retornamos NULL
+	}
+	
+	// Generamos la cadena de salida
+	vsprintf(output, format, args);
+	
+	va_end(args);
+	
+	return output;
+}

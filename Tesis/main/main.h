@@ -30,7 +30,6 @@
 #define MAX_CHARS_PER_SAMPLE (25 + 1)
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
-#define MIN_SAMPLES_TO_SAVE 3
 
 const char * statusAsString[] = {
 		                 "INIT_MODULES",
