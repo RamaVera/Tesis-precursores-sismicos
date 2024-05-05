@@ -253,7 +253,6 @@ void IRAM_ATTR sensors_readingTask(void *pvParameters) {
     MPU9250_t mpuSample;
 	ADC_t adcSample;
 	timeInfo_t timeInfo;
-	QueuePacket_t resultPacket;
 	gpio_set_level(GPIO_NUM_32, 0);
 	
 	while (true) {
@@ -295,11 +294,18 @@ void IRAM_ATTR sensors_readingTask(void *pvParameters) {
 		}
 		
 		//DEBUG_PRINT_MAIN( TAG_SENSORS, "Task SD sending" );
-		if (!buildDataPacketForSD(mpuSample, adcSample, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec,&resultPacket)) {
-	        ESP_LOGE(TAG_SENSORS, "\t Error building packet ... losing samples");
-        }
+		SD_time_t SDdata;
+		SDdata.sensorsData.adcData.adcX = adcSample.adcX;
+		SDdata.sensorsData.adcData.adcY = adcSample.adcY;
+		SDdata.sensorsData.adcData.adcZ = adcSample.adcZ;
+		SDdata.sensorsData.mpuData.accelX = mpuSample.accelX;
+		SDdata.sensorsData.mpuData.accelY = mpuSample.accelY;
+		SDdata.sensorsData.mpuData.accelZ = mpuSample.accelZ;
+		SDdata.hour = timeInfo.tm_hour;
+		SDdata.min = timeInfo.tm_min;
+		SDdata.seconds = timeInfo.tm_sec;
 
-        if( xQueueSend(SDDataQueue, &resultPacket, portMAX_DELAY) != pdPASS ){
+        if( xQueueSend(SDDataQueue, &SDdata, portMAX_DELAY) != pdPASS ){
 	        ESP_LOGE(TAG_SENSORS, "\t Error sending packet to SD queue");
         }
         xSemaphoreGive(xSemaphore_SDMutexQueue);
@@ -318,7 +324,6 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 
     timeInfo_t timeInfo;
     SD_time_t sdData;
-    QueuePacket_t aReceivedPacket;
     SD_time_t sdDataArray[QUEUE_SAMPLE_LENGTH];
     char mainPathToSave[MAX_SAMPLE_PATH_LENGTH];
 
@@ -329,8 +334,7 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
         if (takeSDQueueWhenSamplesAre(MIN_SAMPLES_TO_SAVE)) {
 	        gpio_set_level(GPIO_NUM_15, 1);
 	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD save init" );
-			while( xQueueReceive(SDDataQueue, &aReceivedPacket, 0)){
-	            sdData = getSDDataFromPacket(&aReceivedPacket);
+			while( xQueueReceive(SDDataQueue, &sdData, 0)){
                 sample_change_case_t sampleTimeState = analyzeSampleTime(sdData.hour, sdData.min, sdData.seconds);
 				//DEBUG_PRINT_MAIN( TAG_SD, toString("SD Task Received sdData with state %s", printSampleTimeState(sampleTimeState)) );
 				switch(sampleTimeState){
@@ -515,8 +519,8 @@ void IRAM_ATTR time_internalTimeSync(void *pvParameters){
 //------------------------------ UTILS -----------------------------------------
 
 esp_err_t ESP32_initQueue() {
-	MQTTDataQueue = xQueueCreate(QUEUE_MQTT_LENGTH, sizeof(SD_t));                  if(MQTTDataQueue == NULL)   return ESP_FAIL;
-	SDDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, sizeof(QueuePacket_t));         if(SDDataQueue == NULL)     return ESP_FAIL;
+	MQTTDataQueue = xQueueCreate(QUEUE_MQTT_LENGTH, sizeof(SD_t)); if(MQTTDataQueue == NULL)   return ESP_FAIL;
+	SDDataQueue = xQueueCreate(QUEUE_SAMPLE_LENGTH, sizeof(SD_t)); if(SDDataQueue == NULL)     return ESP_FAIL;
 	return ESP_OK;
 }
 
