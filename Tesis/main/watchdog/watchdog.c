@@ -1,22 +1,8 @@
 #include "watchdog.h"
 
-TaskHandle_t IDLE_CORE_ZERO_ISR = NULL;
-TaskHandle_t IDLE_CORE_ONE_ISR = NULL;
-
-void WDT_enableOnAllCores(void){
-    esp_task_wdt_init(defaultTimeout, true);
-    IDLE_CORE_ZERO_ISR = xTaskGetIdleTaskHandleForCPU(0);
-    IDLE_CORE_ONE_ISR = xTaskGetIdleTaskHandleForCPU(1);
-    ESP_ERROR_CHECK(esp_task_wdt_add(IDLE_CORE_ZERO_ISR));
-    ESP_ERROR_CHECK(esp_task_wdt_add(IDLE_CORE_ONE_ISR));
-}
-
-void WDT_disableOnAllCores(void){
-    IDLE_CORE_ZERO_ISR = xTaskGetIdleTaskHandleForCPU(0);
-    IDLE_CORE_ONE_ISR = xTaskGetIdleTaskHandleForCPU(1);
-    ESP_ERROR_CHECK(esp_task_wdt_delete(IDLE_CORE_ZERO_ISR));
-    ESP_ERROR_CHECK(esp_task_wdt_delete(IDLE_CORE_ONE_ISR));
-    ESP_ERROR_CHECK(esp_task_wdt_deinit());
+esp_err_t WDT_init (uint32_t timeoutInSeconds ){
+	esp_err_t err = esp_task_wdt_init( timeoutInSeconds, true);
+	return err;
 }
 
 void WDT_addTask(TaskHandle_t handle) {
