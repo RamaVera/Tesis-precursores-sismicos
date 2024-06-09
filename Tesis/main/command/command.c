@@ -8,6 +8,13 @@
 #include "command.h"
 static const char TAG[] = "COMMAND";
 
+//#define DEBUG
+#ifdef DEBUG
+#define DEBUG_PRINT_COMMAND(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT_COMMAND(tag, fmt, ...) do {} while (0)
+#endif
+
 esp_err_t COMMAND_Parse(char *rawCommand, command_t *commandParsed){
     if (rawCommand == NULL || strlen(rawCommand) == 0 || commandParsed == NULL) {
         ESP_LOGE(TAG,"Error parsing command rawCommand is null or empty or commandParsed is null");
@@ -43,7 +50,7 @@ esp_err_t COMMAND_Parse(char *rawCommand, command_t *commandParsed){
             memcpy(fields[i], &data, sizeof(data));
             i++;
         }
-        ESP_LOGI(TAG,"Command parsed: %d-%d-%d %d:%d - %d-%d-%d %d:%d",commandParsed->startYear,commandParsed->startMonth,commandParsed->startDay,commandParsed->startHour,commandParsed->startMinute,commandParsed->endYear,commandParsed->endMonth,commandParsed->endDay,commandParsed->endHour,commandParsed->endMinute);
+	    DEBUG_PRINT_COMMAND(TAG,"Command parsed: %d-%02d-%02d %02d:%02d - %d-%02d-%02d %02d:%02d",commandParsed->startYear,commandParsed->startMonth,commandParsed->startDay,commandParsed->startHour,commandParsed->startMinute,commandParsed->endYear,commandParsed->endMonth,commandParsed->endDay,commandParsed->endHour,commandParsed->endMinute);
         return ESP_OK;
 
     }
