@@ -4,7 +4,7 @@
 
 #include "directory_manager.h"
 
-#define DIR_DEBUG_MODE
+//#define DIR_DEBUG_MODE
 #ifdef DIR_DEBUG_MODE
 #define DEBUG_PRINT_DIR(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
 #else
