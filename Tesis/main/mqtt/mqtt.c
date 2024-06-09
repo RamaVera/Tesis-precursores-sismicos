@@ -5,6 +5,12 @@
  */
 #include "mqtt.h"
 
+#ifdef MQTT_DEBUG_MODE
+#define DEBUG_PRINT_MQTT(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT_MQTT(tag, fmt, ...) do {} while (0)
+#endif
+
 static const char *TAG = "MQTT";
 char topicCommands[MAX_WAITING_COMMANDS][MAX_TOPIC_LENGTH];
 int waitingCommandsToProcess = 0;
@@ -50,9 +56,9 @@ void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
     if (waitingCommandsToProcess <= MAX_WAITING_COMMANDS){
         strcpy(topicCommands[waitingCommandsToProcess], data);
         waitingCommandsToProcess++;
-        ESP_LOGI(TAG, "Data of topic received and saved: %s - commands len %d", data, waitingCommandsToProcess);
+	    DEBUG_PRINT_MQTT(TAG, "Data of topic received and saved: %s - commands len %d", data, waitingCommandsToProcess);
     }else{
-        ESP_LOGE(TAG, "Data of topic not saved: %s - commands len %d is full", data, waitingCommandsToProcess);
+	    DEBUG_PRINT_MQTT(TAG, "Data of topic not saved: %s - commands len %d is full", data, waitingCommandsToProcess);
     }
 
  }
@@ -88,13 +94,13 @@ esp_err_t MQTT_init(mqttParams_t mqttParam) {
     };
     //mqtt_cfg.username = user;
     //mqtt_cfg.password = password;
-
-    ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
+	
+	DEBUG_PRINT_MQTT(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
 
     client = esp_mqtt_client_init(&mqtt_cfg); //   Creates mqtt client handle based on the configuration.
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
     esp_mqtt_client_start(client); // Starts mqtt client with already created client handle.
-    ESP_LOGI(TAG, "Start MQTT server: %s:%d", mqtt_cfg.host, mqtt_cfg.port);
+	DEBUG_PRINT_MQTT(TAG, "Start MQTT server: %s:%d", mqtt_cfg.host, mqtt_cfg.port);
     vTaskDelay(50 / portTICK_PERIOD_MS); // waiting 50 ms
     return ESP_OK;
 }
@@ -115,47 +121,47 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     // your_context_t *context = event->context;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_CONNECTED");
             MQTT_isConnected = true;
             break;
 
     case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_DISCONNECTED");
             MQTT_isConnected = false;
             break;
 
     case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
             break;
 
     case MQTT_EVENT_UNSUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
             break;
 
     case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
             break;
 
     case MQTT_EVENT_DATA:   // Cuando recibo un mensaje a un topic que estoy subcripto.
-            ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_DATA");
 
             // obtener topic y mensaje recibido
             char rcv_topic[MAX_TOPIC_LENGTH]="";
             char rcv_message[MAX_MSG_LENGTH]="";
             strncpy(rcv_topic, event->topic, event->topic_len);
             strncpy(rcv_message, event->data, event->data_len);
-            ESP_LOGI(TAG, "TOPIC RECEIVED: %s", rcv_topic );
-            ESP_LOGI(TAG, "MESSAGE RECEIVED: %s", rcv_message);
+		    DEBUG_PRINT_MQTT(TAG, "TOPIC RECEIVED: %s", rcv_topic );
+		    DEBUG_PRINT_MQTT(TAG, "MESSAGE RECEIVED: %s", rcv_message);
             MQTT_processTopic(rcv_topic, rcv_message);
             break;
 
     case MQTT_EVENT_ERROR:
-            ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_ERROR");
             esp_wifi_statis_dump(0xffff);
             break;
 
     default:
-            ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+	    DEBUG_PRINT_MQTT(TAG, "Other event id:%d", event->event_id);
             break;
     }
     return ESP_OK;
@@ -163,7 +169,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    ESP_LOGI(TAG, "Event dispatched from event loop base=%s, event_id=%d - %s", base, event_id, MQTT_ParseEventID(event_id));
+	DEBUG_PRINT_MQTT(TAG, "Event dispatched from event loop base=%s, event_id=%d - %s", base, event_id, MQTT_ParseEventID(event_id));
     mqtt_event_handler_cb(event_data);
 }
 
@@ -178,7 +184,6 @@ bool MQTT_HasCommandToProcess(){
 void MQTT_GetCommand(char *rawCommand) {
     if (waitingCommandsToProcess > 0){
         waitingCommandsToProcess--;
-        ESP_LOGI(TAG, "Command to process: %s", topicCommands[waitingCommandsToProcess]);
         strcpy(rawCommand, topicCommands[waitingCommandsToProcess]);
     }else{
         strcpy(rawCommand, "");
