@@ -28,6 +28,7 @@
 #include "command/command.h"
 
 #define MAX_CHARS_PER_SAMPLE (25 + 1)
+#define MAX_DATA_FOR_MQTT_TRANSFER (MAX_CHARS_PER_SAMPLE*1000)
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
 
