@@ -109,46 +109,68 @@ esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *p
     return ESP_OK;
 }
 
-esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_t **dataToRetrieve, size_t *totalDataRetrieved) {
-    char path[MAX_LINE_LENGTH*2];
-    sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
-    DEBUG_PRINT_SD(TAG,"%s",path);
-    FILE *file = fopen(path, "r");
-    if (file == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for reading");
-        return ESP_FAIL;
-    }
-    // Obtener el tamaño total del archivo
-    fseek(file, 0, SEEK_END);
-    long fileSize = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    // Calcular la cantidad de elementos a leer
-    size_t elementSize = sizeof(SD_t);
-    size_t numElements = fileSize / elementSize;
-    *totalDataRetrieved = numElements;
-    DEBUG_PRINT_SD(TAG,"Number of elements to retrieve %d",numElements);
-    if( numElements == 0  ){
-       ESP_LOGE(TAG, "Error reaching borders of file");
-        return ESP_FAIL;
-    }
-
-    SD_t *dataToRetrieveAux = (SD_t*) malloc(elementSize * numElements);
-    if (dataToRetrieveAux == NULL) {
-        ESP_LOGE(TAG, "Error allocating memory");
-        return ESP_FAIL;
-    }
-
-    if( fread(dataToRetrieveAux,elementSize,numElements,file) != numElements){
-        ESP_LOGE(TAG, "Error reading file");
-        return ESP_FAIL;
-    }
-
-    *dataToRetrieve = dataToRetrieveAux;
-
-
-    fclose(file);
-    return ESP_OK;
+esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataToRetrieve, size_t * numElements, long *fileLine, int * eof ) {
+	char path[MAX_LINE_LENGTH*2];
+	sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
+	DEBUG_PRINT_SD(TAG,"%s",path);
+	FILE *file = fopen(path, "r");
+	if (file == NULL) {
+		ESP_LOGE(TAG, "Failed to open file for reading");
+		return ESP_FAIL;
+	}
+	
+	// Determinar cuántos elementos quedan en el archivo
+	fseek(file, 0, SEEK_END);
+	long endPos = ftell(file);
+	
+	if (endPos == -1) {
+		ESP_LOGE(TAG, "Error getting file size");
+		return ESP_FAIL;
+	}
+	
+	if (*fileLine > endPos) {
+		ESP_LOGE(TAG, "Error: fileLine is greater than file size");
+		return ESP_FAIL;
+	}
+	
+	if (endPos == *fileLine) {
+		*eof = 1;
+		*dataToRetrieve = NULL;
+		*numElements = 0;
+		fclose(file);
+		ESP_LOGI(TAG, "End of file reached");
+		return ESP_OK;
+	}
+	
+	size_t remainingElements = (endPos - *fileLine) / sizeof(SD_t);
+	
+	// Calcular la cantidad de elementos a leer
+	size_t elementsToRead = remainingElements > MAX_ELEMENTS_TO_READ ? MAX_ELEMENTS_TO_READ:remainingElements;
+	size_t elementSize = sizeof(SD_t);
+	SD_t *dataToRetrieveAux = (SD_t*) malloc(elementSize * elementsToRead);
+	if (dataToRetrieveAux == NULL) {
+		ESP_LOGE(TAG, "Error allocating memory %d bytes - free %d",elementSize * elementsToRead,esp_get_free_heap_size());
+		return ESP_FAIL;
+	}
+	
+	// Volver a la posición original en el archivo y leer los datos
+	fseek(file, *fileLine, SEEK_SET);
+	size_t elementsRead = fread(dataToRetrieveAux,elementSize,elementsToRead,file);
+	if( elementsRead < elementsToRead && !feof(file)){
+		ESP_LOGE(TAG, "Error reading elements from file");
+		return ESP_FAIL;
+	}
+	DEBUG_PRINT_SD(TAG,"EndPos: %ld - FileLine: %ld - Remaining: %d - Read: %d",endPos,*fileLine,remainingElements,elementsRead);
+	
+	*dataToRetrieve = dataToRetrieveAux;
+	*numElements = elementsToRead;
+	// Actualizar line con la posición actual del indicador de archivo
+	*fileLine = ftell( file);
+	
+	// Verificar si se ha alcanzado el final del archivo
+	*eof = feof( file);
+	fclose(file);
+	return ESP_OK;
 }
 
 void SD_setSampleFilePath(int hour, int min) {

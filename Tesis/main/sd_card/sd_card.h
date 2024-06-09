@@ -17,7 +17,7 @@
 #include "../pinout.h"
 #include "../data_types.h"
 
-#define MAX_FILE_SIZE   100
+#define MAX_ELEMENTS_TO_READ 120
 #define MAX_LINE_LENGTH 64
 #define MAX_LENGTH 32
 #define MIN_LENGTH 8
@@ -49,9 +49,7 @@ static const int MAX_LINE_SIZE = 500;
 
 esp_err_t SD_init(void);
 esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *pathToSave);
-
-esp_err_t SD_getDataFromRetrieveSampleFile(char *pathToRetrieve, SD_t **dataToRetrieve, size_t *totalDataRetrieved);
-
+esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataToRetrieve, size_t * numElements, long *fileLine, int * eof );
 esp_err_t SD_getConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
 esp_err_t SD_readLastConfigParams(config_params_t * params);
