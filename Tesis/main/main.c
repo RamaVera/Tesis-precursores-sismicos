@@ -325,6 +325,10 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
     ESP_LOGI(TAG_SD,"SD task init on Core ID: %d", xPortGetCoreID());
 	
 	char mainPathToSave[MAX_SAMPLE_PATH_LENGTH];
+	char lastPathToSave[MAX_SAMPLE_PATH_LENGTH];
+	
+	char mainFileName[MAX_FILE_PATH_LENGTH];
+	char lastFileName[MAX_FILE_PATH_LENGTH];
 #ifdef DEBUG
 	int counter = 0;
 #endif
@@ -335,13 +339,18 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 		ESP_LOGE(TAG_SD, "Error allocating memory for sdDataArray");
 		return;
 	}
+	SD_time_t * sdDataArrayForMinuteChange = (SD_time_t *) malloc(QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
+	if ( sdDataArrayForMinuteChange == NULL) {
+		ESP_LOGE(TAG_SD, "Error allocating memory for sdDataArrayForMinuteChange");
+		return;
+	}
 
     DIR_getMainSampleDirectory(mainPathToSave);
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 	
 	WDT_addTask(SD_ISR);
 	while (1) {
-	    int sampleCounterToSave = 0;
+	    int sampleCounterToSave = 0, sampleCounterToSaveForMinuteChange = 0;
         if (takeSDQueueWhenSamplesAre(MIN_SAMPLES_TO_SAVE)) {
 	        gpio_set_level(GPIO_NUM_15, 1);
 	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD save init" );
@@ -354,26 +363,32 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 				switch(sampleTimeState){
                     case NEW_MINUTE:
 						if(sampleCounterToSave != 0) {
-							SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+							memcpy( sdDataArrayForMinuteChange, sdDataArray, sampleCounterToSave * sizeof(SD_time_t));
+							strcpy( lastPathToSave, mainPathToSave);
+							strcpy( lastFileName, mainFileName);
+							sampleCounterToSaveForMinuteChange = sampleCounterToSave;
                             memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
                             sampleCounterToSave = 0;
 							DEBUG_PRINT_MAIN(TAG_SD, toString("Sample time last: %02d:%02d:%02d", sdDataArray[sampleCounterToSave-1].hour, sdDataArray[sampleCounterToSave-1].min, sdDataArray[sampleCounterToSave-1].seconds));
 						}
-                        SD_setSampleFilePath(sdData.hour, sdData.min);
+						SD_setSampleFilePath( sdData.hour, sdData.min, mainFileName);
 						DEBUG_PRINT_MAIN(TAG_SD, toString("Sample time next: %02d:%02d:%02d", sdData.hour, sdData.min, sdData.seconds));
 						break;
                     case NEW_DAY:
 						// Si existe data guardada, implica que correspondía a antes de las 00:00:00
                         // entonces se guarda en el archivo de la fecha anterior.
                         if(sampleCounterToSave != 0) {
-	                        SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
+	                        memcpy( sdDataArrayForMinuteChange, sdDataArray, sampleCounterToSave * sizeof(SD_time_t));
+	                        strcpy( lastPathToSave, mainPathToSave);
+	                        strcpy( lastFileName, mainFileName);
+	                        sampleCounterToSaveForMinuteChange = sampleCounterToSave;
                             memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
                             sampleCounterToSave = 0;
 	                        DEBUG_PRINT_MAIN(TAG_SD, toString("Sample time last: %02d:%02d:%02d", sdDataArray[sampleCounterToSave-1].hour, sdDataArray[sampleCounterToSave-1].min, sdDataArray[sampleCounterToSave-1].seconds));
                         }
                         TIME_getInfoTime(&timeInfo);
                         DIR_updateMainSampleDirectory(mainPathToSave, timeInfo.tm_year,timeInfo.tm_mon,timeInfo.tm_mday);
-                        SD_setSampleFilePath(sdData.hour, sdData.min);
+						SD_setSampleFilePath( sdData.hour, sdData.min, mainFileName);
 						DEBUG_PRINT_MAIN(TAG_SD, toString("Sample time: %02d:%02d:%02d", sdData.hour, sdData.min, sdData.seconds));
 						break;
 
@@ -387,8 +402,15 @@ void IRAM_ATTR sd_savingTask(void *pvParameters) {
 	        gpio_set_level(GPIO_NUM_15, 0);
 	        gpio_set_level(GPIO_NUM_15, 1);
 			
+			if ( sampleCounterToSaveForMinuteChange != 0 ){
+				//ESP_LOGI(TAG_SD, "Task SD save %d samples on %s file %s",sampleCounterToSaveForMinuteChange,lastPathToSave,lastFileName);
+				SD_writeDataArrayOnFile( sdDataArrayForMinuteChange, sampleCounterToSaveForMinuteChange, lastPathToSave,lastFileName);
+				memset( sdDataArrayForMinuteChange, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
+				sampleCounterToSaveForMinuteChange = 0;
+			}
 	        SD_writeDataArrayOnSampleFile(sdDataArray, sampleCounterToSave, mainPathToSave);
-            memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
+	        memset(sdDataArray, 0, QUEUE_SAMPLE_LENGTH * sizeof(SD_time_t));
+	        //ESP_LOGI(TAG_SD, "Task SD save %d samples on %s file %s",sampleCounterToSave,mainPathToSave,mainFileName);
 	        DEBUG_PRINT_MAIN( TAG_SD, "Task SD finish" );
         }
 	    vTaskDelay(MIN_DELAY_FOR_WHILE );
@@ -425,8 +447,8 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
 
                     while(!COMMAND_matchEndTime(&command, dayToGet, hourToGet, minuteToGet)){
                         vTaskDelay(MIN_DELAY_FOR_WHILE);
-
-                        SD_setRetrieveSampleFilePath(hourToGet, minuteToGet);
+	
+	                    SD_setRetrieveSampleFilePath( hourToGet, minuteToGet, NULL);
 						int endOfFile = 0;
 	                    SD_t *sdData = NULL;
 	                    size_t sizeRetrieved = 0;
