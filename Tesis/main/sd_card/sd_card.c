@@ -16,12 +16,12 @@ const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 #define DEBUG_PRINT_SD(tag, fmt, ...) do {} while (0)
 #endif
 
-char fileToSaveSamples[MAX_LINE_LENGTH];
-char fileToRetrieveSamples[MAX_LINE_LENGTH];
+char fileToSaveSamples[MAX_FILE_PATH_LENGTH];
+char fileToRetrieveSamples[MAX_FILE_PATH_LENGTH];
 
 sdmmc_card_t *card;
 
-esp_err_t SD_init(void){
+esp_err_t SD_init (void ){
     esp_log_level_set(TAG, ESP_LOG_VERBOSE );
 
     // Options for mounting the filesystem.
@@ -83,34 +83,38 @@ esp_err_t SD_init(void){
 }
 
 esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *pathToSave) {
-    SD_t * sensorsData = (SD_t *) malloc(sizeof (SD_t) * len);
-    if (sensorsData == NULL){
-        ESP_LOGE(TAG, "Failed to allocate memory for sensorsData");
-        return ESP_FAIL;
-    }
+	return SD_writeDataArrayOnFile( dataToSave, len, pathToSave, fileToSaveSamples );
+}
 
-    for( int i=0;i<len;i++){
-        memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_t));
-    }
-
-    char path[MAX_LINE_LENGTH*2];
-    sprintf(path,"%s/%s",pathToSave,fileToSaveSamples);
-
-    DEBUG_PRINT_SD(TAG,"%s",path);
-    FILE *f = fopen(path,"a");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-        return ESP_FAIL;
-    }
-    fwrite(sensorsData, sizeof (SD_t), len, f);
-
-    fclose(f);
-    free(sensorsData);
-    return ESP_OK;
+esp_err_t SD_writeDataArrayOnFile ( const SD_time_t *dataToSave, int len, const char *pathToSave, const char *fileToSave ) {
+	SD_t * sensorsData = (SD_t *) malloc( sizeof (SD_t) * len);
+	if (sensorsData == NULL){
+	    ESP_LOGE(TAG, "Failed to allocate memory for sensorsData");
+	    return ESP_FAIL;
+	}
+	
+	for( int i=0;i<len;i++){
+	    memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_t));
+	}
+	
+	char path[MAX_COMPLETE_FILE_PATH_LENGTH];
+	sprintf( path, "%s/%s", pathToSave, fileToSave );
+	
+	DEBUG_PRINT_SD( TAG, "%s", path );
+	FILE *f = fopen(path,"a");
+	if (f == NULL) {
+	    ESP_LOGE(TAG, "Failed to open file for writing");
+	    return ESP_FAIL;
+	}
+	fwrite(sensorsData, sizeof (SD_t), len, f);
+	
+	fclose(f);
+	free(sensorsData);
+	return ESP_OK;
 }
 
 esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataToRetrieve, size_t * numElements, long *fileLine, int * eof ) {
-	char path[MAX_LINE_LENGTH*2];
+	char path[MAX_COMPLETE_FILE_PATH_LENGTH];
 	sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
 	DEBUG_PRINT_SD(TAG,"%s",path);
 	FILE *file = fopen(path, "r");
@@ -173,12 +177,18 @@ esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataTo
 	return ESP_OK;
 }
 
-void SD_setSampleFilePath(int hour, int min) {
+void SD_setSampleFilePath ( int hour, int min, char *filenameCreated ) {
     sprintf(fileToSaveSamples, "%02d_%02d.txt", hour, min);
+	if (filenameCreated != NULL){
+		strcpy(filenameCreated, fileToSaveSamples);
+	}
 }
 
-void SD_setRetrieveSampleFilePath(int hour, int min) {
+void SD_setRetrieveSampleFilePath ( int hour, int min, char *retrieveFileSelected ) {
     sprintf(fileToRetrieveSamples, "%02d_%02d.txt", hour, min);
+	if (retrieveFileSelected != NULL){
+		strcpy(retrieveFileSelected, fileToRetrieveSamples);
+	}
 }
 
 // Configuration files
@@ -198,7 +208,7 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
         if ( SD_saveLastConfigParams(configParams) != ESP_OK ){
             ESP_LOGE(TAG, "Failed to write dat config file ");
-            return ESP_OK;
+            return ESP_FAIL;
         }
 
     } else {
@@ -206,7 +216,7 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
         if ( SD_readLastConfigParams(configParams) != ESP_OK ){
             ESP_LOGE(TAG, "Failed to read dat config file ");
-            return ESP_OK;
+            return ESP_FAIL;
         }
     }
 
