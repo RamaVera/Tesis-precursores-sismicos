@@ -16,12 +16,14 @@ const char *TAG = "SD_CARD "; // Para los mensajes de LOG
 #define DEBUG_PRINT_SD(tag, fmt, ...) do {} while (0)
 #endif
 
-char fileToSaveSamples[MAX_LINE_LENGTH];
-char fileToRetrieveSamples[MAX_LINE_LENGTH];
+char fileToSaveSamples[MAX_FILE_PATH_LENGTH];
+char fileToRetrieveSamples[MAX_FILE_PATH_LENGTH];
+
+int sampleHour, sampleMin;
 
 sdmmc_card_t *card;
 
-esp_err_t SD_init(void){
+esp_err_t SD_init (void ){
     esp_log_level_set(TAG, ESP_LOG_VERBOSE );
 
     // Options for mounting the filesystem.
@@ -93,7 +95,7 @@ esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *p
         memcpy(&sensorsData[i],&dataToSave[i].sensorsData,sizeof(SD_t));
     }
 
-    char path[MAX_LINE_LENGTH*2];
+    char path[MAX_LINE_LENGTH];
     sprintf(path,"%s/%s",pathToSave,fileToSaveSamples);
 
     DEBUG_PRINT_SD(TAG,"%s",path);
@@ -110,7 +112,7 @@ esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *p
 }
 
 esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataToRetrieve, size_t * numElements, long *fileLine, int * eof ) {
-	char path[MAX_LINE_LENGTH*2];
+	char path[MAX_LINE_LENGTH];
 	sprintf(path,"%s/%s",pathToRetrieve,fileToRetrieveSamples);
 	DEBUG_PRINT_SD(TAG,"%s",path);
 	FILE *file = fopen(path, "r");
@@ -173,14 +175,42 @@ esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataTo
 	return ESP_OK;
 }
 
-void SD_setSampleFilePath(int hour, int min) {
-    sprintf(fileToSaveSamples, "%02d_%02d.txt", hour, min);
+void SD_setSampleFilePath ( int hour, int min, char * sampleFilePath ) {
+	sampleHour = hour;
+	sampleMin = min;
+	SD_buildFileName( hour, min, fileToSaveSamples );
+	strcpy( sampleFilePath, fileToSaveSamples );
 }
 
-void SD_setRetrieveSampleFilePath(int hour, int min) {
-    sprintf(fileToRetrieveSamples, "%02d_%02d.txt", hour, min);
+void SD_setRetrieveSampleFilePath ( int hour, int min, char *retrieveFilePath ) {
+	SD_buildFileName( hour, min, fileToRetrieveSamples );
+	strcpy( retrieveFilePath, fileToSaveSamples );
 }
 
+void SD_getNextSampleFilePath(){
+	int nextHour = sampleHour;
+	int nextMin = sampleMin + 1;
+	if (nextMin == 60) {
+		nextMin = 0;
+		nextHour++;
+		if (nextHour == 24) {
+			nextHour = 0;
+		}
+	}
+	SD_buildFileName( nextHour, nextMin, fileToSaveSamples );
+}
+
+void SD_buildFileName ( int hour, int min, char *string ) { sprintf( string, "%02d_%02d.txt", hour, min); }
+
+esp_err_t SD_createFile(const char *path) {
+	FILE *file = fopen(path, "w");
+	if (file == NULL) {
+		printf("Error creating file at %s\n", path);
+		return ESP_FAIL;
+	}
+	fclose(file);
+	return ESP_OK;
+}
 // Configuration files
 esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
@@ -198,7 +228,7 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
         if ( SD_saveLastConfigParams(configParams) != ESP_OK ){
             ESP_LOGE(TAG, "Failed to write dat config file ");
-            return ESP_OK;
+            return ESP_FAIL;
         }
 
     } else {
@@ -206,7 +236,7 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 
         if ( SD_readLastConfigParams(configParams) != ESP_OK ){
             ESP_LOGE(TAG, "Failed to read dat config file ");
-            return ESP_OK;
+            return ESP_FAIL;
         }
     }
 

@@ -6,6 +6,7 @@
 #define DIR_MANAGER_H
 
 #include "../sd_card/sd_card.h"
+#include "../time_manager/time_manager.h"
 
 #define PERM_READ S_IRUSR
 #define PERM_WRITE S_IWUSR
@@ -27,6 +28,7 @@ esp_err_t DIR_setRetrieveSampleDirectory(int year, int month, int day);
 esp_err_t DIR_getMainSampleDirectory(char * path);
 esp_err_t DIR_getRetrieveSampleDirectory(char * path);
 esp_err_t DIR_Exist(char *dirPath);
+esp_err_t DIR_createNextMainSampleDirectory(char *pathToRetrieve);
 void DIR_updateRetrieveSampleDirectory(char *pathToRetrieve, int yearToUpdate, int montToUpdate, int dayToUpdate);
 void DIR_updateMainSampleDirectory(char *pathToRetrieve, int yearToUpdate, int montToUpdate, int dayToUpdate);
 

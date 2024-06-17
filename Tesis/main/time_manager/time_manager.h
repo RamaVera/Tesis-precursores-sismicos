@@ -51,4 +51,6 @@ void TIME_printTimeAndDate(timeInfo_t *timeInfo);
 timeval_t TIME_saveSnapshot (timeval_t *timeInfo );
 void TIME_DiffNow (timeInfo_t *actual, timeval_t *init );
 void TIME_Diff( timeInfo_t *actual, timeval_t *init, timeval_t *end );
+void TIME_getNextDay (int year, int month, int day, int *nextYear, int *nextMonth, int *nextDay );
+void TIME_getNextMinute (int hour,int minute, int *nextHour, int *nextMinute);
 #endif //RTC_H

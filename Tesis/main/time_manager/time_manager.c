@@ -5,6 +5,8 @@
 
 static const char *TAG = "TIME ";
 
+int isLeapYear (int year ) ;
+
 esp_err_t TIMER_create (char *name, int32_t periodInMS, TimerCallbackFunction_t interruptToCallEveryTimelapse, TimerHandle_t *handle ) {
 	TimerHandle_t timeHandle;
 	timeHandle = xTimerCreate(name, pdMS_TO_TICKS(periodInMS), pdTRUE, NULL, interruptToCallEveryTimelapse);
@@ -148,4 +150,52 @@ void TIME_Diff( timeInfo_t *actual, timeval_t *init, timeval_t *end ) {
 	actual->tm_sec = abs((end->tv_sec - init->tv_sec) % 60);
 	actual->milliseconds = abs((end->tv_usec - init->tv_usec) / 1000);
 	actual->microseconds = abs((end->tv_usec - init->tv_usec) % 1000);
+}
+
+void TIME_getNextDay (int year, int month, int day, int *nextYear, int *nextMonth, int *nextDay ) {
+	int monthLength[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+	
+	// Ajustar para años bisiestos
+	if (isLeapYear(year)) {
+		monthLength[1] = 29;
+	}
+	
+	day++;
+	if (day > monthLength[month - 1]) {
+		day = 1;
+		month++;
+		if (month > 12) {
+			month = 1;
+			year++;
+		}
+	}
+	*nextYear = year;
+	*nextMonth = month;
+	*nextDay = day;
+}
+
+void TIME_getNextMinute (int hour,int minute, int *nextHour, int *nextMinute) {
+	minute++;
+	if (minute > 59) {
+		minute = 0;
+		hour++;
+		if (hour > 23) {
+			hour = 0;
+		}
+	}
+	*nextHour = hour;
+	*nextMinute = minute;
+}
+
+
+int isLeapYear (int year ) {
+	if (year % 400 == 0) {
+		return 1;
+	} else if (year % 100 == 0) {
+		return 0;
+	} else if (year % 4 == 0) {
+		return 1;
+	} else {
+		return 0;
+	}
 }
