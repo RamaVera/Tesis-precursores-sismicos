@@ -11,6 +11,39 @@
 #define DEBUG_PRINT_MQTT(tag, fmt, ...) do {} while (0)
 #endif
 
+static const char* root_ca =
+		"-----BEGIN CERTIFICATE-----\n"
+		"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\n"
+		"-----END CERTIFICATE-----\n";
+
 static const char *TAG = "MQTT";
 char topicCommands[MAX_WAITING_COMMANDS][MAX_TOPIC_LENGTH];
 int waitingCommandsToProcess = 0;
@@ -37,7 +70,6 @@ void MQTT_subscribe(const char * topic){
  MQTT_publish(): publica mensaje en el topic especificado.
 *******************************************************************************/
 void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
-
   /* CON PUBLISH *********************************************************
   esp_mqtt_client_publish(client, topic, data, len, qos, retain) */
   esp_mqtt_client_publish(client, topic, mensaje, (int)len, 0, 0);
@@ -78,29 +110,53 @@ void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
      }
 
      strcpy (mqttParams->ip_broker, broker);
-     strcpy (mqttParams->user, user);
-     strcpy (mqttParams->password, password);
+	 if(strcmp(user, "xxx") == 0 || strcmp(password, "xxx") == 0) {
+		 strcpy (mqttParams->user, "");
+		 strcpy (mqttParams->password, "");
+	 } else {
+		 strcpy (mqttParams->user, user);
+		 strcpy (mqttParams->password, password);
+	 }
      mqttParams->port = num;
+	 
+	 ESP_LOGI(TAG, "MQTT Params: %s:%d", mqttParams->ip_broker, mqttParams->port);
+	 ESP_LOGI(TAG, "MQTT User: %s", mqttParams->user);
+	 ESP_LOGI(TAG, "MQTT Password: %s", mqttParams->password);
      return ESP_OK;
  }
 
 
 esp_err_t MQTT_init(mqttParams_t mqttParam) {
     esp_log_level_set(TAG, ESP_LOG_VERBOSE );
-
-    esp_mqtt_client_config_t mqtt_cfg = {
-            .host = mqttParam.ip_broker,
-            .port = mqttParam.port
-    };
-    //mqtt_cfg.username = user;
-    //mqtt_cfg.password = password;
+	esp_mqtt_client_config_t mqtt_cfg_without_user = {
+			.host = mqttParam.ip_broker,
+			.port = mqttParam.port
+	};
+	esp_mqtt_client_config_t mqtt_cfg_with_user = {
+			.host = mqttParam.ip_broker,
+			.port = mqttParam.port,
+			.username = mqttParam.user,
+			.password = mqttParam.password,
+			.transport = MQTT_TRANSPORT_OVER_SSL,
+			.cert_pem = root_ca,
+			.disable_auto_reconnect = false,      // Activa reconexión automática
+	};
+	
+	if (strlen(mqttParam.user) != 0 && strlen(mqttParam.password) != 0) {
+		client = esp_mqtt_client_init(&mqtt_cfg_with_user); //   Creates mqtt client handle based on the configuration.
+		ESP_LOGI(TAG, "MQTT client with user and password %s:%s", mqtt_cfg_with_user.username, mqtt_cfg_with_user.password);
+		ESP_LOGI(TAG, "Start MQTT server: %s:%d", mqtt_cfg_with_user.host, mqtt_cfg_with_user.port);
+		
+	} else {
+		client = esp_mqtt_client_init(&mqtt_cfg_without_user); //   Creates mqtt client handle based on the configuration.
+		ESP_LOGI(TAG, "MQTT client without user and password");
+		ESP_LOGI(TAG, "Start MQTT server: %s:%d", mqtt_cfg_without_user.host, mqtt_cfg_without_user.port);
+	}
 	
 	DEBUG_PRINT_MQTT(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
 
-    client = esp_mqtt_client_init(&mqtt_cfg); //   Creates mqtt client handle based on the configuration.
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
     esp_mqtt_client_start(client); // Starts mqtt client with already created client handle.
-	DEBUG_PRINT_MQTT(TAG, "Start MQTT server: %s:%d", mqtt_cfg.host, mqtt_cfg.port);
     vTaskDelay(50 / portTICK_PERIOD_MS); // waiting 50 ms
     return ESP_OK;
 }
@@ -121,12 +177,12 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     // your_context_t *context = event->context;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
-	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_CONNECTED");
+	    ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             MQTT_isConnected = true;
             break;
 
     case MQTT_EVENT_DISCONNECTED:
-	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_DISCONNECTED");
+	    ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
             MQTT_isConnected = false;
             break;
 
@@ -156,12 +212,12 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             break;
 
     case MQTT_EVENT_ERROR:
-	    DEBUG_PRINT_MQTT(TAG, "MQTT_EVENT_ERROR");
+	    ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
             esp_wifi_statis_dump(0xffff);
             break;
 
     default:
-	    DEBUG_PRINT_MQTT(TAG, "Other event id:%d", event->event_id);
+	    ESP_LOGI(TAG, "Other event id:%d", event->event_id);
             break;
     }
     return ESP_OK;

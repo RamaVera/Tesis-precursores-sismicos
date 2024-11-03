@@ -19,7 +19,7 @@
 #include <esp_wifi.h>
 
 #define MAX_WAITING_COMMANDS 3
-#define MAX_LENGTH_MQTT_PARAM 32
+#define MAX_LENGTH_MQTT_PARAM 64
 typedef struct mqttParams {
     char ip_broker[MAX_LENGTH_MQTT_PARAM];
     int port;
