@@ -108,17 +108,17 @@ esp_err_t TIME_parseParams ( timeInfo_t *timeInfo, char *yearAsString, char *mon
 
     int year = strtol(yearAsString, &endptr, 10);
     if (*endptr != '\0') {
-        ESP_LOGE(TAG,"Error Getting MQTT port");
+        ESP_LOGE(TAG,"Error Getting Offline Year Seed - %s", yearAsString);
         return ESP_FAIL;
     }
     int month = strtol(monthAsString, &endptr, 10);
     if (*endptr != '\0') {
-        ESP_LOGE(TAG,"Error Getting MQTT port");
+        ESP_LOGE(TAG,"Error Getting Offline Month seed - %s", monthAsString);
         return ESP_FAIL;
     }
     int day = strtol(dayAsString, &endptr, 10);
     if (*endptr != '\0') {
-        ESP_LOGE(TAG,"Error Getting MQTT port");
+        ESP_LOGE(TAG,"Error Getting Offline Day seed - %s", dayAsString);
         return ESP_FAIL;
     }
 
