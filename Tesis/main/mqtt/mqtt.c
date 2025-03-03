@@ -128,6 +128,9 @@ void MQTT_publish(const char * topic, const char * mensaje, unsigned int len) {
 
 esp_err_t MQTT_init(mqttParams_t mqttParam) {
     esp_log_level_set(TAG, ESP_LOG_VERBOSE );
+	size_t freeMemoryBefore = esp_get_free_heap_size();
+	ESP_LOGI(TAG, "[APP] Free memory before MQTT init: %d bytes", freeMemoryBefore);
+	
 	esp_mqtt_client_config_t mqtt_cfg_without_user = {
 			.host = mqttParam.ip_broker,
 			.port = mqttParam.port
@@ -153,12 +156,19 @@ esp_err_t MQTT_init(mqttParams_t mqttParam) {
 		ESP_LOGI(TAG, "Start MQTT server: %s:%d", mqtt_cfg_without_user.host, mqtt_cfg_without_user.port);
 	}
 	
-	DEBUG_PRINT_MQTT(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
 
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
     esp_mqtt_client_start(client); // Starts mqtt client with already created client handle.
     vTaskDelay(50 / portTICK_PERIOD_MS); // waiting 50 ms
-    return ESP_OK;
+	
+	// Calcular el consumo de memoria
+	size_t freeMemoryAfter = esp_get_free_heap_size();
+	ESP_LOGI(TAG, "[APP] Free memory after MQTT init: %d bytes", freeMemoryAfter);
+	
+	size_t memoryConsumed = freeMemoryBefore - freeMemoryAfter;
+	ESP_LOGI(TAG, "[APP] Memory consumed by MQTT init: %d bytes", memoryConsumed);
+	
+	return ESP_OK;
 }
 
 /* handle cliente MQTT ************************************************/
