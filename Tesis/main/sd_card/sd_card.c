@@ -87,9 +87,9 @@ esp_err_t SD_writeDataArrayOnSampleFile(SD_time_t dataToSave[], int len, char *p
 }
 
 esp_err_t SD_writeDataArrayOnFile ( const SD_time_t *dataToSave, int len, const char *pathToSave, const char *fileToSave ) {
-	SD_t * sensorsData = (SD_t *) malloc( sizeof (SD_t) * len);
-	if (sensorsData == NULL){
-	    ESP_LOGE(TAG, "Failed to allocate memory for sensorsData");
+	SD_t sensorsData[MAX_SIZE_DATA_TO_SAVE];
+	if ( len > MAX_SIZE_DATA_TO_SAVE ){
+	    ESP_LOGE(TAG, "Error: len is greater than %d",MAX_SIZE_DATA_TO_SAVE);
 	    return ESP_FAIL;
 	}
 	
@@ -109,7 +109,6 @@ esp_err_t SD_writeDataArrayOnFile ( const SD_time_t *dataToSave, int len, const 
 	fwrite(sensorsData, sizeof (SD_t), len, f);
 	
 	fclose(f);
-	free(sensorsData);
 	return ESP_OK;
 }
 
@@ -153,7 +152,7 @@ esp_err_t SD_readDataFromRetrieveSampleFile (char *pathToRetrieve, SD_t **dataTo
 	size_t elementSize = sizeof(SD_t);
 	SD_t *dataToRetrieveAux = (SD_t*) malloc(elementSize * elementsToRead);
 	if (dataToRetrieveAux == NULL) {
-		ESP_LOGE(TAG, "Error allocating memory %d bytes - free %d",elementSize * elementsToRead,esp_get_free_heap_size());
+		ESP_LOGE(TAG, "Error allocating memory %d bytes - free %d",elementSize * elementsToRead, esp_get_free_heap_size());
 		return ESP_FAIL;
 	}
 	
@@ -220,13 +219,13 @@ esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
         }
     }
 
-    DEBUG_PRINT_SD(TAG,"WIFI SSID: %s", configParams->wifi_ssid);
-    DEBUG_PRINT_SD(TAG,"Password: %s", configParams->wifi_password);
-    DEBUG_PRINT_SD(TAG,"MQTT IP Broker: %s", configParams->mqtt_ip_broker);
-    DEBUG_PRINT_SD(TAG,"MQTT User: %s", configParams->mqtt_user);
-    DEBUG_PRINT_SD(TAG,"MQTT Password: %s", configParams->mqtt_password);
-    DEBUG_PRINT_SD(TAG,"MQTT Port: %s",  configParams->mqtt_port);
-    DEBUG_PRINT_SD(TAG, "Seed Datetime: %s/%s/%s", configParams->init_year, configParams->init_month, configParams->init_day);
+    ESP_LOGI(TAG,"WIFI SSID: %s", configParams->wifi_ssid);
+	ESP_LOGI(TAG,"Password: %s", configParams->wifi_password);
+	ESP_LOGI(TAG,"MQTT IP Broker: %s", configParams->mqtt_ip_broker);
+	ESP_LOGI(TAG,"MQTT User: %s", configParams->mqtt_user);
+	ESP_LOGI(TAG,"MQTT Password: %s", configParams->mqtt_password);
+	ESP_LOGI(TAG,"MQTT Port: %s",  configParams->mqtt_port);
+	ESP_LOGI(TAG, "Seed Datetime: %s/%s/%s", configParams->init_year, configParams->init_month, configParams->init_day);
 
     return ESP_OK;
 }
