@@ -9,6 +9,7 @@
 
 #include "freertos/FreeRTOS.h"  // Algoritmo de sincronismo
 #include "freertos/task.h"      // Algoritmo de sincronismo
+#include <sys/cdefs.h>
 
 #include "esp_log.h"
 #include "esp_err.h"
@@ -27,29 +28,23 @@
 #include "time_manager/time_manager.h"
 #include "command/command.h"
 
-#define MAX_CHARS_PER_SAMPLE (25 + 1)
-#define MAX_DATA_FOR_MQTT_TRANSFER (MAX_CHARS_PER_SAMPLE*1000)
+#define MAX_CHARS_PER_SAMPLE (31 + 1)
+#define MAX_DATA_FOR_MQTT_TRANSFER ((MAX_CHARS_PER_SAMPLE - 1)*10 + 1)
 #define TOPIC_TO_RECEIVE_COMMANDS "tesis/commands"
 #define TOPIC_TO_PUBLISH_DATA "tesis/data"
 
 const char * statusAsString[] = {
 		                 "INIT_MODULES",
                          "INIT_WITH_WIFI",
-                         "INIT_WITHOUT_WIFI",
-                         "WAITING_TO_INIT",
 		                 "INIT_WIFI_FUNCTIONS",
 		                 "INIT_SAMPLING",
-		                 "INIT_TIMERS",
 		                 "DONE",
 		                 "ERROR"};
 typedef enum status_t{
 	INIT_MODULES,
 	INIT_WITH_WIFI,
-	INIT_WITHOUT_WIFI,
-	WAITING_TO_INIT,
 	INIT_WIFI_FUNCTIONS,
 	INIT_SAMPLING,
-	INIT_TIMERS,
 	DONE,
 	ERROR,
 }status_t;
