@@ -71,4 +71,11 @@ char * COMMAND_GetHeaderType(command_t aCommand) {
     }
 }
 
-bool COMMAND_matchEndTime(command_t *command, int dayToGet, int hourToGet, int minuteToGet) { return dayToGet == (*command).endDay && hourToGet == (*command).endHour && minuteToGet == (*command).endMinute; }
+bool COMMAND_matchEndTime(command_t *command, int dayToGet, int hourToGet, int minuteToGet) {
+	// Convert the times to minutes since the start of the month for comparison
+	int commandEndTime = ((*command).endDay * 24 * 60) + ((*command).endHour * 60) + (*command).endMinute;
+	int currentTime = (dayToGet * 24 * 60) + (hourToGet * 60) + minuteToGet;
+	
+	// Return true only if the current time is greater than the command end time
+	return currentTime > commandEndTime;
+}
