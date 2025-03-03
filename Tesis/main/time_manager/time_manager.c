@@ -24,11 +24,7 @@ esp_err_t TIMER_start ( TimerHandle_t timerHandle ) {
 
 esp_err_t TIME_synchronizeTimeAndDateFromInternet () {
     ESP_LOGI(TAG, "Getting time from NTP server...");
-
-    // Seteo timezone de Argentina GMT-3
-    setenv("TZ", "<-03>3", 1);
-    tzset();
-
+	
     // Configuro el server NTP para sincronizar la hora
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
@@ -61,8 +57,11 @@ timeInfo_t TIME_getInfoTime(timeInfo_t *timeInfo) {
     time(&now);
     struct tm tm_time;
     struct timeval tv;
-    gettimeofday(&tv, NULL);
-
+	gettimeofday(&tv, NULL);
+	
+	// Adjust the time to GMT-3
+	setenv("TZ", "ART3", 1);
+	tzset();
     localtime_r(&now, &tm_time);
 
     // Copia los valores a tu propia estructura timeInfo_t
