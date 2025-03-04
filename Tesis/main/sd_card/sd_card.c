@@ -190,6 +190,36 @@ void SD_setRetrieveSampleFilePath ( int hour, int min, char *retrieveFileSelecte
 	}
 }
 
+esp_err_t SD_deleteRetrieveSampleFile (char *pathToDelete) {
+	char path[MAX_COMPLETE_FILE_PATH_LENGTH];
+	sprintf(path,"%s/%s",pathToDelete,fileToRetrieveSamples);
+	DEBUG_PRINT_SD(TAG,"%s",path);
+	return remove(path) == 0 ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t SD_getFreeSpace (uint64_t *free_space, uint64_t *total_space) {
+	FATFS *fs;
+	DWORD fre_clust, fre_sect, tot_sect;
+	
+	// Obtener información del sistema de archivos
+	if (f_getfree("0:", &fre_clust, &fs) == FR_OK) {
+		// Calcular sectores libres y totales
+		fre_sect = fre_clust * fs->csize;
+		tot_sect = fs->n_fatent * fs->csize;
+		
+		// Convertir a bytes
+		 *free_space = (uint64_t)fre_sect * 512;
+		 *total_space = (uint64_t)tot_sect * 512;
+		
+		ESP_LOGI(TAG,"Espacio total: %llu bytes\n", *total_space);
+		ESP_LOGI(TAG,"Espacio libre: %llu bytes\n", *free_space);
+	} else {
+		ESP_LOGI(TAG,"Error al obtener espacio libre\n");
+		return ESP_FAIL;
+	}
+	return ESP_OK;
+}
+
 // Configuration files
 esp_err_t SD_getConfigurationParams(config_params_t * configParams) {
 

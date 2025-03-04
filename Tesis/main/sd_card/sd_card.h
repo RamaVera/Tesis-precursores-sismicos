@@ -58,6 +58,9 @@ esp_err_t SD_getConfigurationParams(config_params_t *configParams);
 esp_err_t SD_saveLastConfigParams(config_params_t * params);
 esp_err_t SD_readLastConfigParams(config_params_t * params);
 esp_err_t SD_getRawConfigParams(char *buffer, int i);
+esp_err_t SD_deleteRetrieveSampleFile (char *pathToDelete);
+esp_err_t SD_getFreeSpace (uint64_t *free_space, uint64_t *total_space);
+
 void SD_parseRawConfigParams(config_params_t *configParams, char *buffer);
 void SD_setFallbackConfigParams(config_params_t *pParams);
 

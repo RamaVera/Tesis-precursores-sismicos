@@ -23,41 +23,64 @@ esp_err_t COMMAND_Parse(char *rawCommand, command_t *commandParsed){
     char *token = strtok(rawCommand, " ");
     if (strcmp(token, COMMAND_HEADER_TO_RETRIEVE_DATA) == 0 ) {
         commandParsed->header = RETRIEVE_DATA;
-        int * fields[] = {
-                &commandParsed->startYear,
-                &commandParsed->startMonth,
-                &commandParsed->startDay,
-                &commandParsed->startHour,
-                &commandParsed->startMinute,
-                &commandParsed->endYear,
-                &commandParsed->endMonth,
-                &commandParsed->endDay,
-                &commandParsed->endHour,
-                &commandParsed->endMinute
-        };
-        const int num_fields = sizeof(fields)/sizeof(fields[0]);
-        
-        int i = 0;
-        int data;
-        char * endPtr;
-        while (token != NULL && i < num_fields) {
-            token = strtok(NULL, "-");
-            data = strtol(token, &endPtr, 10);
-            if (*endPtr != '\0' || token == endPtr) {
-                ESP_LOGE(TAG,"Error parsing command");
-                return ESP_FAIL;
-            }
-            memcpy(fields[i], &data, sizeof(data));
-            i++;
-        }
-	    DEBUG_PRINT_COMMAND(TAG,"Command parsed: %d-%02d-%02d %02d:%02d - %d-%02d-%02d %02d:%02d",commandParsed->startYear,commandParsed->startMonth,commandParsed->startDay,commandParsed->startHour,commandParsed->startMinute,commandParsed->endYear,commandParsed->endMonth,commandParsed->endDay,commandParsed->endHour,commandParsed->endMinute);
-        return ESP_OK;
+	    if ( parseDateCommand( commandParsed, token ) != ESP_OK ) {
+		    return ESP_FAIL;
+	    }
+		return ESP_OK;
 
-    }
-    else {
+    } else if (strcmp(token, COMMAND_HEADER_TO_DELETE_FILES) == 0 ) {
+		commandParsed->header = DELETE_FILES;
+	    if ( parseDateCommand( commandParsed, token ) != ESP_OK ) {
+		    return ESP_FAIL;
+	    }
+	    return  ESP_OK;
+	
+    } else if (strcmp(token, COMMAND_HEADER_TO_QUERY_SPACE) == 0 ) {
+	    commandParsed->header = QUERY_SD_SPACE;
+	    return ESP_OK;
+    } else if (strcmp(token, COMMAND_HEADER_TO_REBOOT) == 0 ) {
+	    commandParsed->header = REBOOT;
+	    return ESP_OK;
+    } else {
         ESP_LOGE(TAG,"Error command header not supported");
         return ESP_FAIL;
     }
+}
+
+esp_err_t parseDateCommand ( command_t *commandParsed, char *token ) {
+	int * fields[] = {
+			&commandParsed->startYear,
+			&commandParsed->startMonth,
+			&commandParsed->startDay,
+			&commandParsed->startHour,
+			&commandParsed->startMinute,
+			&commandParsed->endYear,
+			&commandParsed->endMonth,
+			&commandParsed->endDay,
+			&commandParsed->endHour,
+			&commandParsed->endMinute
+	};
+	const int num_fields = sizeof(fields)/sizeof(fields[0]);
+	
+	int i = 0;
+	int data;
+	char * endPtr;
+	while (token != NULL && i < num_fields) {
+		token = strtok(NULL, "-");
+		data = strtol(token, &endPtr, 10);
+		if (*endPtr != '\0' || token == endPtr) {
+			ESP_LOGE(TAG,"Error parsing command");
+			return ESP_FAIL;
+		}
+		memcpy(fields[i], &data, sizeof(data));
+		i++;
+	}
+	DEBUG_PRINT_COMMAND( TAG, "Command parsed: %d-%02d-%02d %02d:%02d - %d-%02d-%02d %02d:%02d",
+	                     commandParsed->startYear, commandParsed->startMonth, commandParsed->startDay,
+	                     commandParsed->startHour, commandParsed->startMinute, commandParsed->endYear,
+	                     commandParsed->endMonth, commandParsed->endDay, commandParsed->endHour,
+	                     commandParsed->endMinute );
+	return ESP_OK;
 }
 
 

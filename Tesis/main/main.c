@@ -543,7 +543,56 @@ void IRAM_ATTR mqtt_receiveCommandTask(void *pvParameters){
 	                retrievingData = false;
 	                gpio_set_level(GPIO_NUM_15, 0);
 	                break;
-                }
+                };
+	            case DELETE_FILES:{
+		            retrievingData = true;
+		            int dayToGet = command.startDay;
+		            int hourToGet = command.startHour;
+		            int minuteToGet = command.startMinute;
+		            DIR_updateRetrieveSampleDirectory(directoryPathToRetrieve, command.startYear, command.startMonth, dayToGet);
+		
+		            do {
+			            vTaskDelay(MIN_DELAY_FOR_WHILE);
+			            SD_setRetrieveSampleFilePath( hourToGet, minuteToGet, NULL);
+						
+						if( SD_deleteRetrieveSampleFile(directoryPathToRetrieve) != ESP_OK){
+							MQTT_publish(TOPIC_TO_PUBLISH_DATA, "error deleting", strlen("error deleting"));
+							ESP_LOGE(TAG_MQTT_RECIEVER,"Error deleting sample file");
+						}
+						
+			            minuteToGet++;
+			            if(minuteToGet == 60){
+				            minuteToGet = 0;
+				            hourToGet++;
+				            if( hourToGet == 24){
+					            hourToGet = 0;
+					            dayToGet++;
+					            DIR_updateRetrieveSampleDirectory(directoryPathToRetrieve, command.startYear, command.startMonth, dayToGet);
+				            }
+			            }
+			            WDT_reset(MQTT_RECEIVE_ISR);
+		            } while(!COMMAND_matchEndTime(&command, dayToGet, hourToGet, minuteToGet));
+		            MQTT_publish(TOPIC_TO_PUBLISH_DATA, "Deletion Finish", strlen("Deletion Finish"));
+					
+		            break;
+				};
+	            case REBOOT:{
+		            MQTT_publish(TOPIC_TO_PUBLISH_DATA, "rebooting", strlen("rebooting"));
+		            esp_restart();
+		            break;
+	            };
+	            case QUERY_SD_SPACE:{
+		            uint64_t free_space,total_space;
+		            if( SD_getFreeSpace (&free_space, &total_space) != ESP_OK) {
+			            MQTT_publish(TOPIC_TO_PUBLISH_DATA, "error getting space", strlen("error getting space"));
+			            ESP_LOGE(TAG_MQTT_RECIEVER,"Error getting space");
+		            } else {
+			            char space[100];
+			            sprintf(space,"Free space: %llu, Total space: %llu", free_space, total_space);
+			            MQTT_publish(TOPIC_TO_PUBLISH_DATA, space, strlen(space));
+		            }
+		            break;
+	            }
             }
         }
         WDT_reset(MQTT_RECEIVE_ISR);
